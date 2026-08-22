@@ -1,0 +1,221 @@
+{% extends 'base/layout.html' %}
+{% load static %}
+{% load helpers %}
+
+{% block title %}{{ floorplan }}{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+  <div class="col-12">
+    <h1>{{ floorplan.site }} / {{ floorplan.name }}</h1>
+    {% if floorplan.location %}<p class="text-muted">Location: {{ floorplan.location }}</p>{% endif %}
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-md-9">
+    <div id="cfp-stage-wrap" style="position:relative; border:1px solid var(--tblr-border-color); overflow:auto; background:#0a0f16;">
+      <div id="cfp-stage" style="position:relative; display:inline-block;">
+        <img id="cfp-floor-img" src="{{ floorplan.image.url }}" style="display:block; max-width:none;">
+        <div id="cfp-markers"></div>
+      </div>
+    </div>
+    {% if can_edit %}
+      <p class="text-muted mt-2 small">Click anywhere on the image to place a camera. Click an existing marker to edit or move it.</p>
+    {% endif %}
+  </div>
+
+  <div class="col-md-3">
+    <div class="card">
+      <div class="card-header">Camera details</div>
+      <div class="card-body" id="cfp-detail">
+        <p class="text-muted">Select a camera marker, or click the floor plan to add one.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .cfp-marker { position:absolute; width:26px; height:26px; margin:-13px 0 0 -13px; cursor:pointer; }
+  .cfp-marker .cfp-dot {
+    position:absolute; top:0; left:0; width:26px; height:26px; border-radius:50%;
+    background:#0a0f16; border:2px solid #f2a65a; display:flex; align-items:center; justify-content:center; font-size:13px;
+  }
+  .cfp-marker.selected .cfp-dot { border-color:#fff; box-shadow:0 0 0 3px rgba(242,166,90,.4); }
+  .cfp-marker .cfp-ring {
+    position:absolute; top:-3px; left:-3px; width:32px; height:32px; border-radius:50%; border:2px solid #5a6b7d;
+  }
+  .cfp-marker .cfp-ring.ok { border-color:#45c46a; }
+  .cfp-marker .cfp-ring.down { border-color:#e5484d; }
+  .cfp-marker .cfp-cone {
+    position:absolute; top:13px; left:13px; width:0; height:0; transform-origin:0 0;
+    border-left:9px solid transparent; border-right:9px solid transparent; border-bottom:34px solid rgba(242,166,90,.25);
+  }
+  .cfp-marker .cfp-tag {
+    position:absolute; top:29px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:10px;
+    background:rgba(10,15,22,.85); color:#dbe6f0; padding:2px 6px; border-radius:3px;
+  }
+</style>
+
+<script>
+(function(){
+  const floorplanId = {{ floorplan.pk }};
+  const canEdit = {{ can_edit|yesno:"true,false" }};
+  let cameras = {{ cameras_json|safe }};
+  let selectedId = null;
+
+  const stage = document.getElementById('cfp-stage');
+  const img = document.getElementById('cfp-floor-img');
+  const markersLayer = document.getElementById('cfp-markers');
+  const detail = document.getElementById('cfp-detail');
+
+  function getCookie(name) {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+  }
+
+  const CAMERA_ICONS = {
+    dome: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 15 A8 8 0 0 1 20 15 Z" fill="#f2a65a"/><rect x="9" y="15" width="6" height="3" rx="1" fill="#f2a65a"/></svg>`,
+    ptz: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="5" fill="#f2a65a"/><path d="M12 2 L14 6 L10 6 Z" fill="#f2a65a"/><path d="M12 22 L14 18 L10 18 Z" fill="#f2a65a"/><path d="M2 12 L6 10 L6 14 Z" fill="#f2a65a"/><path d="M22 12 L18 10 L18 14 Z" fill="#f2a65a"/></svg>`,
+    bullet: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="9" width="14" height="6" rx="2" fill="#f2a65a"/><path d="M17 10 L21 8 L21 16 L17 14 Z" fill="#f2a65a"/></svg>`,
+    other: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="4" y="7" width="16" height="10" rx="2" fill="#f2a65a"/><circle cx="12" cy="12" r="3" fill="#0a0f16"/></svg>`,
+  };
+  const CAMERA_TYPE_LABELS = { dome: 'Dome', ptz: 'PTZ', bullet: 'Bullet', other: 'Other' };
+
+  function cameraIcon(type){
+    return CAMERA_ICONS[type] || CAMERA_ICONS.other;
+  }
+
+  function renderMarkers(){
+    markersLayer.innerHTML = '';
+    cameras.forEach(cam => {
+      const el = document.createElement('div');
+      el.className = 'cfp-marker' + (cam.id === selectedId ? ' selected' : '');
+      el.style.left = cam.x_pct + '%';
+      el.style.top = cam.y_pct + '%';
+      const ringClass = cam.reachability === true ? 'ok' : (cam.reachability === false ? 'down' : '');
+      el.innerHTML = `
+        <div class="cfp-cone" style="transform:rotate(${cam.direction_degrees}deg);"></div>
+        <div class="cfp-ring ${ringClass}"></div>
+        <div class="cfp-dot">${cameraIcon(cam.camera_type)}</div>
+        <div class="cfp-tag">${cam.device_name}</div>
+      `;
+      el.addEventListener('click', (e) => { e.stopPropagation(); selectedId = cam.id; renderMarkers(); renderDetail(); });
+      markersLayer.appendChild(el);
+    });
+  }
+
+  function renderDetail(){
+    const cam = cameras.find(c => c.id === selectedId);
+    if(!cam){
+      detail.innerHTML = '<p class="text-muted">Select a camera marker, or click the floor plan to add one.</p>';
+      return;
+    }
+    const uplinkHtml = cam.uplinks.length
+      ? cam.uplinks.map(u => `<div>${u.local_interface} → ${u.remote_device ? u.remote_device + ' / ' + u.remote_interface : '(unterminated)'}</div>`).join('')
+      : '<span class="text-muted">No cable connections in NetBox for this device.</span>';
+    const powerHtml = cam.power_terminations.length
+      ? cam.power_terminations.map(p => `<div>${p.port} → ${p.remote}</div>`).join('')
+      : (cam.power_source_override
+          ? `<span class="text-muted">Manual note: ${cam.power_source_override === 'poe' ? 'PoE' : 'External adapter'}</span>`
+          : '<span class="text-muted">No power connections recorded in NetBox.</span>');
+
+    detail.innerHTML = `
+      <h5><a href="${cam.device_url}">${cam.device_name}</a></h5>
+      <div class="mb-2"><strong>Camera type</strong><br>
+        ${canEdit ? `
+          <select id="cfp-type" class="form-select form-select-sm">
+            ${Object.entries(CAMERA_TYPE_LABELS).map(([val, label]) =>
+              `<option value="${val}" ${cam.camera_type === val ? 'selected' : ''}>${label}</option>`
+            ).join('')}
+          </select>
+        ` : CAMERA_TYPE_LABELS[cam.camera_type] || 'Other'}
+      </div>
+      <div class="mb-2"><strong>Uplink</strong><br>${uplinkHtml}</div>
+      <div class="mb-2"><strong>Power</strong><br>${powerHtml}</div>
+      <div class="mb-2"><strong>Direction</strong><br>
+        ${canEdit ? `<input type="range" min="0" max="359" value="${cam.direction_degrees}" id="cfp-direction" style="width:100%;">` : cam.direction_degrees + '°'}
+      </div>
+      <div class="mb-2"><strong>Notes</strong><br>
+        ${canEdit ? `<textarea id="cfp-notes" class="form-control form-control-sm">${cam.notes || ''}</textarea>` : (cam.notes || '<span class="text-muted">None</span>')}
+      </div>
+      ${canEdit ? `
+        <button class="btn btn-sm btn-primary w-100 mb-1" id="cfp-save-btn">Save</button>
+        <button class="btn btn-sm btn-outline-danger w-100" id="cfp-delete-btn">Delete marker</button>
+      ` : ''}
+    `;
+
+    if(canEdit){
+      document.getElementById('cfp-save-btn').addEventListener('click', () => {
+        cam.direction_degrees = parseInt(document.getElementById('cfp-direction').value, 10) || 0;
+        cam.notes = document.getElementById('cfp-notes').value;
+        cam.camera_type = document.getElementById('cfp-type').value;
+        savePlacement(cam);
+      });
+      document.getElementById('cfp-delete-btn').addEventListener('click', () => {
+        if(!confirm('Delete this camera marker? This does not delete the device itself.')) return;
+        fetch(`/plugins/camera-floorplan/cameras/${cam.id}/quick-delete/`, {
+          method: 'POST',
+          headers: { 'X-CSRFToken': getCookie('csrftoken') },
+        }).then(() => {
+          cameras = cameras.filter(c => c.id !== cam.id);
+          selectedId = null;
+          renderMarkers(); renderDetail();
+        });
+      });
+    }
+  }
+
+  function savePlacement(cam){
+    fetch(`/plugins/camera-floorplan/floorplans/${floorplanId}/save-camera/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+      body: JSON.stringify({
+        id: cam.id, device_id: cam.device_id, camera_type: cam.camera_type,
+        x_pct: cam.x_pct, y_pct: cam.y_pct,
+        direction_degrees: cam.direction_degrees, notes: cam.notes,
+      }),
+    }).then(r => r.json()).then(data => {
+      if(data.id) cam.id = data.id;
+      renderMarkers();
+    });
+  }
+
+  if(canEdit){
+    stage.addEventListener('click', (e) => {
+      if(e.target.closest('.cfp-marker')) return;
+      const rect = img.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      const y = ((e.clientY - rect.top) / rect.height) * 100;
+      const deviceId = prompt('Enter the NetBox device ID for this camera (find it on the device page URL):');
+      if(!deviceId) return;
+      const typeInput = (prompt('Camera type: dome, ptz, or bullet (leave blank for other):') || '').trim().toLowerCase();
+      const cameraType = ['dome','ptz','bullet'].includes(typeInput) ? typeInput : 'other';
+      const newCam = {
+        id: null, device_id: parseInt(deviceId, 10), device_name: 'Loading...', device_url: '#',
+        camera_type: cameraType,
+        x_pct: Math.max(0, Math.min(100, x)), y_pct: Math.max(0, Math.min(100, y)),
+        direction_degrees: 0, power_source_override: '', notes: '', reachability: null,
+        uplinks: [], power_terminations: [],
+      };
+      fetch(`/plugins/camera-floorplan/floorplans/${floorplanId}/save-camera/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+        body: JSON.stringify({
+          device_id: newCam.device_id, camera_type: newCam.camera_type,
+          x_pct: newCam.x_pct, y_pct: newCam.y_pct,
+          direction_degrees: 0,
+        }),
+      }).then(r => r.json()).then(data => {
+        if(data.error){ alert(data.error); return; }
+        location.reload(); // simplest way to refetch the device name/links server-side
+      });
+    });
+  }
+
+  renderMarkers();
+  renderDetail();
+})();
+</script>
+{% endblock %}
