@@ -110,3 +110,12 @@ This plugin manages **positions and directions only**. It does not create,
 edit, or delete Devices, Interfaces, Cables, or Power Ports — those remain
 fully owned by NetBox core (or your existing MCP/automation tooling). This
 keeps floor plan data and network topology data from ever drifting apart.
+
+## If you generated 0001_initial.py yourself
+
+If this repo's `migrations/` folder is still empty and you had to enable
+`DEVELOPER = True` to generate the migration yourself (see the main
+installation troubleshooting), copy the generated file back into this
+repo at `netbox_camera_floorplan/migrations/0001_initial.py` and commit it.
+This means future installs on other servers won't need `DEVELOPER` mode at
+all — `migrate` will just work directly.
