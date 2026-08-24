@@ -204,6 +204,16 @@ class CameraPlacementSaveView(PermissionRequiredMixin, View):
         if x_pct is None or y_pct is None or device_id is None:
             return JsonResponse({"error": "device_id, x_pct and y_pct are required."}, status=400)
 
+        # Raw click coordinates from the browser (pixel math) commonly have
+        # far more precision than the model's DecimalField(decimal_places=3)
+        # allows, which previously failed full_clean() validation on every
+        # single "place a new camera" click — round here so it always fits.
+        try:
+            x_pct = round(float(x_pct), 3)
+            y_pct = round(float(y_pct), 3)
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "x_pct and y_pct must be numbers."}, status=400)
+
         device = get_object_or_404(Device, pk=device_id)
 
         camera_type_id = payload.get("camera_type_id")

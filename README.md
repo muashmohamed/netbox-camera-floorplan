@@ -76,6 +76,12 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
   even when nothing was actually conflicting. It now only shows that
   message for genuine uniqueness conflicts, and shows the real
   validation error otherwise.
+- **Found and fixed the real bug the above was masking**: clicking to
+  place a *new* camera sends raw pixel-derived coordinates with far more
+  than 3 decimal places, but the database only stores 3 — every new
+  placement was silently failing this validation. Coordinates are now
+  rounded to 3 decimal places both in the browser and on the server
+  before saving.
 
 ### A note on camera devices and racks
 

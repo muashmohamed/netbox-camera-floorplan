@@ -110,10 +110,6 @@
   }
   .cfp-marker .cfp-ring.ok { border-color:#45c46a; }
   .cfp-marker .cfp-ring.down { border-color:#e5484d; }
-  .cfp-marker .cfp-cone {
-    position:absolute; top:13px; left:13px; width:0; height:0; transform-origin:0 0;
-    border-left:9px solid transparent; border-right:9px solid transparent; border-bottom:34px solid rgba(242,166,90,.25);
-  }
   .cfp-marker .cfp-tag {
     position:absolute; top:29px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:10px;
     background:rgba(10,15,22,.85); color:#dbe6f0; padding:2px 6px; border-radius:3px; text-align:center;
@@ -236,7 +232,6 @@
       const ringClass = cam.reachability === true ? 'ok' : (cam.reachability === false ? 'down' : '');
       const color = cameraTypeColor(cam.camera_type_id);
       el.innerHTML = `
-        <div class="cfp-cone" style="transform:rotate(${cam.direction_degrees}deg); border-bottom-color:${color}66;"></div>
         <div class="cfp-ring ${ringClass}"></div>
         <div class="cfp-dot" style="border-color:${color};">${cameraIconHtml(cam.camera_type_id)}</div>
         <div class="cfp-tag">${markerLabelHtml(cam)}</div>
@@ -397,7 +392,10 @@
       const rect = img.getBoundingClientRect();
       const x = ((e.clientX - rect.left) / rect.width) * 100;
       const y = ((e.clientY - rect.top) / rect.height) * 100;
-      pendingClick = { x_pct: Math.max(0, Math.min(100, x)), y_pct: Math.max(0, Math.min(100, y)) };
+      pendingClick = {
+        x_pct: Math.round(Math.max(0, Math.min(100, x)) * 1000) / 1000,
+        y_pct: Math.round(Math.max(0, Math.min(100, y)) * 1000) / 1000,
+      };
       selectedNewDeviceId = null;
       searchInput.value = '';
       resultsBox.innerHTML = '';
