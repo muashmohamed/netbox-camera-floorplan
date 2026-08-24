@@ -32,6 +32,11 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
   is not defined` in the browser console). NetBox doesn't expose
   Bootstrap's JS as a global `window.bootstrap`, so the "place a camera"
   modal now drives its own show/hide instead of depending on that.
+- Fixed `403 CSRF verification failed` when saving a camera placement.
+  The canvas JS was reading a `csrftoken` cookie that NetBox doesn't set
+  (it isn't cookie-based here); it now uses Django's `{{ csrf_token }}`
+  template value instead, which works regardless of how CSRF is
+  configured.
 
 ### A note on camera devices and racks
 

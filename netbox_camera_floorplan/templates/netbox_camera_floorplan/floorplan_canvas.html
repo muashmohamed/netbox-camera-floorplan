@@ -136,11 +136,7 @@
     showError._t = window.setTimeout(() => { errorBanner.style.display = 'none'; }, 6000);
   }
 
-  function getCookie(name) {
-    const value = `; ${document.cookie}`;
-    const parts = value.split(`; ${name}=`);
-    if (parts.length === 2) return parts.pop().split(';').shift();
-  }
+  const CSRF_TOKEN = "{{ csrf_token }}";
 
   function getBsModal(el){
     // NetBox doesn't expose Bootstrap's JS as a global `bootstrap` variable,
@@ -278,7 +274,7 @@
         document.getElementById('cfp-confirm-delete').onclick = () => {
           fetch(`/plugins/camera-floorplan/cameras/${cam.id}/quick-delete/`, {
             method: 'POST',
-            headers: { 'X-CSRFToken': getCookie('csrftoken') },
+            headers: { 'X-CSRFToken': CSRF_TOKEN },
           }).then(() => {
             cameras = cameras.filter(c => c.id !== cam.id);
             selectedId = null;
@@ -293,7 +289,7 @@
   function savePlacement(cam){
     fetch(`/plugins/camera-floorplan/floorplans/${floorplanId}/save-camera/`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
       body: JSON.stringify({
         id: cam.id, device_id: cam.device_id, camera_type_id: cam.camera_type_id,
         x_pct: cam.x_pct, y_pct: cam.y_pct,
@@ -353,7 +349,7 @@
       const cameraTypeId = typeVal ? parseInt(typeVal, 10) : null;
       fetch(`/plugins/camera-floorplan/floorplans/${floorplanId}/save-camera/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
         body: JSON.stringify({
           device_id: selectedNewDeviceId, camera_type_id: cameraTypeId,
           x_pct: pendingClick.x_pct, y_pct: pendingClick.y_pct,
