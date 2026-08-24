@@ -79,9 +79,13 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
 - **Found and fixed the real bug the above was masking**: clicking to
   place a *new* camera sends raw pixel-derived coordinates with far more
   than 3 decimal places, but the database only stores 3 — every new
-  placement was silently failing this validation. Coordinates are now
-  rounded to 3 decimal places both in the browser and on the server
-  before saving.
+  placement was silently failing this validation. The first attempt at
+  fixing this (rounding the float) wasn't actually enough — Django
+  converts a Python float to `Decimal` by preserving its exact binary
+  representation (e.g. `34.568` can become
+  `Decimal('34.567999999999998...')` with 40+ digits), which still fails
+  the decimal-places check. Coordinates are now converted via a
+  formatted string (`f"{value:.3f}"`) instead, which is exact.
 
 ### A note on camera devices and racks
 

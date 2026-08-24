@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.contrib.auth.mixins import PermissionRequiredMixin
@@ -206,12 +207,16 @@ class CameraPlacementSaveView(PermissionRequiredMixin, View):
 
         # Raw click coordinates from the browser (pixel math) commonly have
         # far more precision than the model's DecimalField(decimal_places=3)
-        # allows, which previously failed full_clean() validation on every
-        # single "place a new camera" click — round here so it always fits.
+        # allows. Rounding a float and handing it straight to the model
+        # isn't enough — Django converts floats to Decimal by preserving
+        # their exact binary representation (e.g. 34.568 becomes something
+        # like Decimal('34.5680000000000003944...')), which still fails the
+        # decimal_places check. Building the Decimal from a formatted
+        # string instead avoids that entirely.
         try:
-            x_pct = round(float(x_pct), 3)
-            y_pct = round(float(y_pct), 3)
-        except (TypeError, ValueError):
+            x_pct = Decimal(f"{float(x_pct):.3f}")
+            y_pct = Decimal(f"{float(y_pct):.3f}")
+        except (TypeError, ValueError, InvalidOperation):
             return JsonResponse({"error": "x_pct and y_pct must be numbers."}, status=400)
 
         device = get_object_or_404(Device, pk=device_id)
