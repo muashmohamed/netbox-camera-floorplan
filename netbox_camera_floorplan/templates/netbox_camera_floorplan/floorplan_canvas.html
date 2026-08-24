@@ -143,8 +143,42 @@
   }
 
   function getBsModal(el){
-    return bootstrap.Modal.getOrCreateInstance(el);
+    // NetBox doesn't expose Bootstrap's JS as a global `bootstrap` variable,
+    // so we drive the same Bootstrap 5 modal markup/CSS ourselves instead of
+    // depending on bootstrap.Modal (which caused a silent click failure).
+    return {
+      show(){
+        el.classList.add('show');
+        el.style.display = 'block';
+        el.removeAttribute('aria-hidden');
+        el.setAttribute('aria-modal', 'true');
+        document.body.classList.add('modal-open');
+        if(!document.getElementById('cfp-backdrop')){
+          const backdrop = document.createElement('div');
+          backdrop.id = 'cfp-backdrop';
+          backdrop.className = 'modal-backdrop fade show';
+          document.body.appendChild(backdrop);
+        }
+      },
+      hide(){
+        el.classList.remove('show');
+        el.style.display = 'none';
+        el.setAttribute('aria-hidden', 'true');
+        el.removeAttribute('aria-modal');
+        document.body.classList.remove('modal-open');
+        const backdrop = document.getElementById('cfp-backdrop');
+        if(backdrop) backdrop.remove();
+      },
+    };
   }
+
+  // Wire up every Cancel/× button (data-bs-dismiss="modal") without relying on Bootstrap's JS.
+  document.querySelectorAll('.modal [data-bs-dismiss="modal"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const modalEl = btn.closest('.modal');
+      if(modalEl) getBsModal(modalEl).hide();
+    });
+  });
 
   function cameraTypeById(id){
     return cameraTypes.find(t => t.id === id);

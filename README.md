@@ -28,6 +28,10 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
   CameraPlacement) list pages — NetBox's standard object table always
   links each row to a change-history view, which none of these three
   models had registered. All three now have proper changelog views/URLs.
+- Fixed clicking the floor plan doing nothing (`ReferenceError: bootstrap
+  is not defined` in the browser console). NetBox doesn't expose
+  Bootstrap's JS as a global `window.bootstrap`, so the "place a camera"
+  modal now drives its own show/hide instead of depending on that.
 
 ### A note on camera devices and racks
 
