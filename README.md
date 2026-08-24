@@ -21,6 +21,9 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
 - The device search in the "Add camera" modal now shows each device's
   Location (not just Site), and sorts devices in the current floor plan's
   own Location/Site to the top.
+- `CameraType` is exposed in the REST API at
+  `/api/plugins/camera-floorplan/camera-types/`, alongside the existing
+  `floorplans/` and `cameras/` endpoints.
 
 ### A note on camera devices and racks
 

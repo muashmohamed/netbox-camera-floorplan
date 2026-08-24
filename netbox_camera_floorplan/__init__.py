@@ -5,7 +5,7 @@ class CameraFloorplanConfig(PluginConfig):
     name = "netbox_camera_floorplan"
     verbose_name = "Camera Floor Plans"
     description = "Place CCTV cameras on floor plan images and view their live NetBox connections."
-    version = "0.1.0"
+    version = "0.2.0"
     author = "Stelco IT"
     base_url = "camera-floorplan"
     min_version = "4.0.0"
