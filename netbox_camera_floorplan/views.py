@@ -1,7 +1,8 @@
 import json
 
 from django.contrib.auth.mixins import PermissionRequiredMixin
-from django.db import models
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, models
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views import View
@@ -97,17 +98,19 @@ class FloorPlanCanvasView(PermissionRequiredMixin, View):
 
     def get(self, request, pk):
         floorplan = get_object_or_404(FloorPlan, pk=pk)
-        cameras = floorplan.cameras.select_related("device", "camera_type").all()
+        cameras = floorplan.cameras.select_related("device", "device__primary_ip4", "camera_type").all()
 
         camera_data = []
         for cam in cameras:
             uplinks = cam.get_uplink_terminations()
             power = cam.get_power_terminations()
+            primary_ip = cam.device.primary_ip4
             camera_data.append({
                 "id": cam.pk,
                 "device_id": cam.device.pk,
                 "device_name": cam.device.name,
                 "device_url": cam.device.get_absolute_url(),
+                "ip_address": str(primary_ip.address.ip) if primary_ip else None,
                 "camera_type_id": cam.camera_type_id,
                 "x_pct": float(cam.x_pct),
                 "y_pct": float(cam.y_pct),
@@ -182,6 +185,21 @@ class CameraPlacementSaveView(PermissionRequiredMixin, View):
         if camera_type_id:
             camera_type = get_object_or_404(CameraType, pk=camera_type_id)
 
+        def already_placed_error():
+            existing = CameraPlacement.objects.filter(device=device).select_related("floorplan").first()
+            if existing and existing.floorplan_id == floorplan.pk:
+                where = "this floor plan"
+            elif existing:
+                where = f"the floor plan \"{existing.floorplan.name}\""
+            else:
+                where = "another floor plan"
+            return JsonResponse(
+                {"error": f"{device.name} is already placed on {where}. "
+                          f"A camera can only be pinned to one location — "
+                          f"delete that marker first if you want to move it here."},
+                status=409,
+            )
+
         if placement_id:
             placement = get_object_or_404(CameraPlacement, pk=placement_id, floorplan=floorplan)
             placement.device = device
@@ -192,18 +210,27 @@ class CameraPlacementSaveView(PermissionRequiredMixin, View):
             placement.direction_degrees = direction
             placement.power_source_override = payload.get("power_source_override", placement.power_source_override)
             placement.notes = payload.get("notes", placement.notes)
-            placement.save()
+            try:
+                placement.full_clean()
+                placement.save()
+            except (IntegrityError, ValidationError):
+                return already_placed_error()
         else:
-            placement = CameraPlacement.objects.create(
-                floorplan=floorplan,
-                device=device,
-                camera_type=camera_type,
-                x_pct=x_pct,
-                y_pct=y_pct,
-                direction_degrees=direction,
-                power_source_override=payload.get("power_source_override", ""),
-                notes=payload.get("notes", ""),
-            )
+            try:
+                placement = CameraPlacement(
+                    floorplan=floorplan,
+                    device=device,
+                    camera_type=camera_type,
+                    x_pct=x_pct,
+                    y_pct=y_pct,
+                    direction_degrees=direction,
+                    power_source_override=payload.get("power_source_override", ""),
+                    notes=payload.get("notes", ""),
+                )
+                placement.full_clean()
+                placement.save()
+            except (IntegrityError, ValidationError):
+                return already_placed_error()
 
         return JsonResponse({"id": placement.pk, "status": "ok"})
 
@@ -255,7 +282,16 @@ class DeviceSearchView(LoginRequiredMixin, View):
                         )
                     )
 
-        devices = devices[:15]
+        devices = list(devices[:15])
+
+        # Look up existing placements for just these matched devices in one
+        # query, so the modal can flag "already placed" before the user
+        # picks a device that's going to fail anyway.
+        existing_placements = {
+            p.device_id: p.floorplan
+            for p in CameraPlacement.objects.filter(device__in=devices).select_related("floorplan")
+        }
+
         return JsonResponse({
             "results": [
                 {
@@ -263,6 +299,9 @@ class DeviceSearchView(LoginRequiredMixin, View):
                     "name": d.name,
                     "site": str(d.site) if d.site else "",
                     "location": str(d.location) if d.location else "",
+                    "placed_on_floorplan": (
+                        existing_placements[d.pk].name if d.pk in existing_placements else None
+                    ),
                 }
                 for d in devices
             ]
