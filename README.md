@@ -37,6 +37,24 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
   (it isn't cookie-based here); it now uses Django's `{{ csrf_token }}`
   template value instead, which works regardless of how CSRF is
   configured.
+- Fixed a raw `500 Internal Server Error` when placing a device that's
+  already on the same floor plan (the "one marker per device per floor
+  plan" database rule was correct, but hitting it wasn't handled — it now
+  shows a clear inline message instead of crashing).
+- **Changed the uniqueness rule**: a device can now only be placed on
+  **one floor plan total**, not just once-per-floor-plan — a physical
+  camera exists in exactly one location, so placing the same device
+  twice (even on two different floor plans) no longer makes sense to
+  allow. **Requires a new migration** — see below.
+- The "place a camera" device search now shows already-placed devices in
+  red with the floor plan they're already on, so you find out *before*
+  clicking Place camera instead of after.
+- Each camera's primary IPv4 address is now shown both under its label
+  on the floor plan and in the details panel, when the device has one
+  set in NetBox.
+- Added a "Marker label" dropdown above the floor plan to choose Name
+  only, IP only, or both — remembered per-browser so it doesn't reset
+  every time you open a floor plan.
 
 ### A note on camera devices and racks
 

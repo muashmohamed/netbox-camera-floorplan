@@ -14,6 +14,14 @@
 
 <div class="row">
   <div class="col-md-9">
+    <div class="mb-2 d-flex align-items-center gap-2">
+      <label for="cfp-label-mode" class="form-label small mb-0 text-muted">Marker label:</label>
+      <select id="cfp-label-mode" class="form-select form-select-sm" style="max-width:160px;">
+        <option value="both">Name + IP</option>
+        <option value="name">Name only</option>
+        <option value="ip">IP only</option>
+      </select>
+    </div>
     <div id="cfp-stage-wrap" style="position:relative; border:1px solid var(--tblr-border-color); overflow:auto; background:#0a0f16;">
       <div id="cfp-stage" style="position:relative; display:inline-block;">
         <img id="cfp-floor-img" src="{{ floorplan.image.url }}" style="display:block; max-width:none;">
@@ -108,8 +116,9 @@
   }
   .cfp-marker .cfp-tag {
     position:absolute; top:29px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:10px;
-    background:rgba(10,15,22,.85); color:#dbe6f0; padding:2px 6px; border-radius:3px;
+    background:rgba(10,15,22,.85); color:#dbe6f0; padding:2px 6px; border-radius:3px; text-align:center;
   }
+  .cfp-marker .cfp-tag-ip { color:#9db4c7; font-size:9px; }
   #cfp-device-results .list-group-item { cursor:pointer; font-size:.85rem; }
 </style>
 
@@ -120,6 +129,8 @@
   let cameras = {{ cameras_json|safe }};
   const cameraTypes = {{ camera_types_json|safe }}; // [{id, name, color, icon_url}, ...]
   let selectedId = null;
+  const LABEL_MODE_KEY = 'netbox_camera_floorplan_label_mode';
+  let labelMode = localStorage.getItem(LABEL_MODE_KEY) || 'both';
   let pendingClick = null;
   let selectedNewDeviceId = null;
 
@@ -205,6 +216,16 @@
     ).join('') || '<option value="">No camera types defined yet</option>';
   }
 
+  function markerLabelHtml(cam){
+    const nameLine = cam.device_name;
+    const ipLine = cam.ip_address
+      ? `<span class="cfp-tag-ip">${cam.ip_address}</span>`
+      : `<span class="cfp-tag-ip text-muted">no IP</span>`;
+    if(labelMode === 'name') return nameLine;
+    if(labelMode === 'ip') return ipLine;
+    return `${nameLine}<br>${ipLine}`; // both
+  }
+
   function renderMarkers(){
     markersLayer.innerHTML = '';
     cameras.forEach(cam => {
@@ -218,7 +239,7 @@
         <div class="cfp-cone" style="transform:rotate(${cam.direction_degrees}deg); border-bottom-color:${color}66;"></div>
         <div class="cfp-ring ${ringClass}"></div>
         <div class="cfp-dot" style="border-color:${color};">${cameraIconHtml(cam.camera_type_id)}</div>
-        <div class="cfp-tag">${cam.device_name}</div>
+        <div class="cfp-tag">${markerLabelHtml(cam)}</div>
       `;
       el.addEventListener('click', (e) => { e.stopPropagation(); selectedId = cam.id; renderMarkers(); renderDetail(); });
       markersLayer.appendChild(el);
@@ -242,6 +263,7 @@
 
     detail.innerHTML = `
       <h5><a href="${cam.device_url}">${cam.device_name}</a></h5>
+      ${cam.ip_address ? `<div class="text-muted small mb-2">${cam.ip_address}</div>` : ''}
       <div class="mb-2"><strong>Camera type</strong><br>
         ${canEdit ? `<select id="cfp-type" class="form-select form-select-sm"></select>` : cameraTypeName(cam.camera_type_id)}
       </div>
@@ -316,9 +338,15 @@
       .then(data => {
         resultsBox.innerHTML = data.results.map(d => {
           const meta = [d.location, d.site].filter(Boolean).join(', ');
+          if(d.placed_on_floorplan){
+            return `<div class="list-group-item text-danger" data-id="${d.id}" data-name="${d.name}" data-meta="${meta}" data-placed="${d.placed_on_floorplan}" style="cursor:not-allowed;" title="Already placed — click its existing marker instead">
+              ${d.name}${meta ? ' <span class="text-muted">(' + meta + ')</span>' : ''}
+              <br><small>Already placed on "${d.placed_on_floorplan}"</small>
+            </div>`;
+          }
           return `<div class="list-group-item" data-id="${d.id}" data-name="${d.name}" data-meta="${meta}">${d.name}${meta ? ' <span class="text-muted">(' + meta + ')</span>' : ''}</div>`;
         }).join('') || '<div class="text-muted small p-1">No matching devices.</div>';
-        resultsBox.querySelectorAll('.list-group-item[data-id]').forEach(item => {
+        resultsBox.querySelectorAll('.list-group-item[data-id]:not(.text-danger)').forEach(item => {
           item.addEventListener('click', () => {
             selectedNewDeviceId = parseInt(item.dataset.id, 10);
             const meta = item.dataset.meta;
@@ -377,6 +405,16 @@
       confirmAddBtn.disabled = true;
       populateTypeSelect(document.getElementById('cfp-new-type'), null);
       getBsModal(document.getElementById('cfp-add-modal')).show();
+    });
+  }
+
+  const labelModeSelect = document.getElementById('cfp-label-mode');
+  if(labelModeSelect){
+    labelModeSelect.value = labelMode;
+    labelModeSelect.addEventListener('change', () => {
+      labelMode = labelModeSelect.value;
+      localStorage.setItem(LABEL_MODE_KEY, labelMode);
+      renderMarkers();
     });
   }
 
