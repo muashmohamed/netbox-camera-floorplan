@@ -71,6 +71,11 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
   Plan with a name that already exists (usually from double-clicking
   Create/Save). Now shows a clear message and returns to the form
   instead of crashing.
+- Fixed the "place a camera" save endpoint incorrectly reporting
+  "already placed on another floor plan" for *any* validation failure,
+  even when nothing was actually conflicting. It now only shows that
+  message for genuine uniqueness conflicts, and shows the real
+  validation error otherwise.
 
 ### A note on camera devices and racks
 

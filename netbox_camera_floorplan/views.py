@@ -211,20 +211,41 @@ class CameraPlacementSaveView(PermissionRequiredMixin, View):
         if camera_type_id:
             camera_type = get_object_or_404(CameraType, pk=camera_type_id)
 
-        def already_placed_error():
-            existing = CameraPlacement.objects.filter(device=device).select_related("floorplan").first()
-            if existing and existing.floorplan_id == floorplan.pk:
-                where = "this floor plan"
-            elif existing:
-                where = f"the floor plan \"{existing.floorplan.name}\""
-            else:
-                where = "another floor plan"
-            return JsonResponse(
-                {"error": f"{device.name} is already placed on {where}. "
-                          f"A camera can only be pinned to one location — "
-                          f"delete that marker first if you want to move it here."},
-                status=409,
-            )
+        def build_error_response(exc):
+            """
+            Only report "already placed" when the failure is genuinely a
+            uniqueness conflict — otherwise show the real validation error.
+            The previous version assumed every ValidationError/IntegrityError
+            here meant a duplicate placement, which masked unrelated
+            failures behind a misleading message.
+            """
+            is_uniqueness_conflict = isinstance(exc, IntegrityError)
+            if isinstance(exc, ValidationError):
+                message_dict = getattr(exc, "message_dict", None)
+                text = (
+                    " ".join(msg for msgs in message_dict.values() for msg in msgs)
+                    if message_dict else " ".join(exc.messages)
+                )
+                if "already exists" in text.lower() or "unique" in text.lower():
+                    is_uniqueness_conflict = True
+
+            if is_uniqueness_conflict:
+                existing = CameraPlacement.objects.filter(device=device).select_related("floorplan").first()
+                if existing and existing.floorplan_id == floorplan.pk:
+                    where = "this floor plan"
+                elif existing:
+                    where = f'the floor plan "{existing.floorplan.name}"'
+                else:
+                    where = "another floor plan (its marker may have just been removed — please try again)"
+                return JsonResponse(
+                    {"error": f"{device.name} is already placed on {where}. "
+                              f"A camera can only be pinned to one location — "
+                              f"delete that marker first if you want to move it here."},
+                    status=409,
+                )
+
+            detail = "; ".join(exc.messages) if isinstance(exc, ValidationError) else str(exc)
+            return JsonResponse({"error": f"Could not save this camera: {detail}"}, status=400)
 
         if placement_id:
             placement = get_object_or_404(CameraPlacement, pk=placement_id, floorplan=floorplan)
@@ -239,8 +260,8 @@ class CameraPlacementSaveView(PermissionRequiredMixin, View):
             try:
                 placement.full_clean()
                 placement.save()
-            except (IntegrityError, ValidationError):
-                return already_placed_error()
+            except (IntegrityError, ValidationError) as e:
+                return build_error_response(e)
         else:
             try:
                 placement = CameraPlacement(
@@ -255,8 +276,8 @@ class CameraPlacementSaveView(PermissionRequiredMixin, View):
                 )
                 placement.full_clean()
                 placement.save()
-            except (IntegrityError, ValidationError):
-                return already_placed_error()
+            except (IntegrityError, ValidationError) as e:
+                return build_error_response(e)
 
         return JsonResponse({"id": placement.pk, "status": "ok"})
 
