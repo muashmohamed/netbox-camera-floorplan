@@ -1,16 +1,39 @@
 import json
 
 from django.contrib.auth.mixins import PermissionRequiredMixin
+from django.db import models
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views import View
 from django.views.decorators.csrf import csrf_protect
 from django.utils.decorators import method_decorator
 
+from django.contrib.auth.mixins import LoginRequiredMixin
+
 from netbox.views import generic
 
 from . import filtersets, forms, tables
-from .models import CameraPlacement, FloorPlan
+from .models import CameraPlacement, CameraType, FloorPlan
+from dcim.models import Device
+
+
+# ---------------------------------------------------------------------------
+# CameraType CRUD — manage the set of camera types and their icons/colors
+# ---------------------------------------------------------------------------
+
+class CameraTypeListView(generic.ObjectListView):
+    queryset = CameraType.objects.all()
+    table = tables.CameraTypeTable
+    filterset = filtersets.CameraTypeFilterSet
+
+
+class CameraTypeEditView(generic.ObjectEditView):
+    queryset = CameraType.objects.all()
+    form = forms.CameraTypeForm
+
+
+class CameraTypeDeleteView(generic.ObjectDeleteView):
+    queryset = CameraType.objects.all()
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +85,7 @@ class FloorPlanCanvasView(PermissionRequiredMixin, View):
 
     def get(self, request, pk):
         floorplan = get_object_or_404(FloorPlan, pk=pk)
-        cameras = floorplan.cameras.select_related("device").all()
+        cameras = floorplan.cameras.select_related("device", "camera_type").all()
 
         camera_data = []
         for cam in cameras:
@@ -73,7 +96,7 @@ class FloorPlanCanvasView(PermissionRequiredMixin, View):
                 "device_id": cam.device.pk,
                 "device_name": cam.device.name,
                 "device_url": cam.device.get_absolute_url(),
-                "camera_type": cam.camera_type,
+                "camera_type_id": cam.camera_type_id,
                 "x_pct": float(cam.x_pct),
                 "y_pct": float(cam.y_pct),
                 "direction_degrees": cam.direction_degrees,
@@ -93,12 +116,23 @@ class FloorPlanCanvasView(PermissionRequiredMixin, View):
                 ],
             })
 
+        camera_types = [
+            {
+                "id": ct.pk,
+                "name": ct.name,
+                "color": ct.color,
+                "icon_url": ct.get_icon_url(),
+            }
+            for ct in CameraType.objects.all()
+        ]
+
         can_edit = request.user.has_perm("netbox_camera_floorplan.add_cameraplacement")
 
         return render(request, "netbox_camera_floorplan/floorplan_canvas.html", {
             "object": floorplan,
             "floorplan": floorplan,
             "cameras_json": json.dumps(camera_data),
+            "camera_types_json": json.dumps(camera_types),
             "can_edit": can_edit,
         })
 
@@ -129,13 +163,18 @@ class CameraPlacementSaveView(PermissionRequiredMixin, View):
         if x_pct is None or y_pct is None or device_id is None:
             return JsonResponse({"error": "device_id, x_pct and y_pct are required."}, status=400)
 
-        from dcim.models import Device
         device = get_object_or_404(Device, pk=device_id)
+
+        camera_type_id = payload.get("camera_type_id")
+        camera_type = None
+        if camera_type_id:
+            camera_type = get_object_or_404(CameraType, pk=camera_type_id)
 
         if placement_id:
             placement = get_object_or_404(CameraPlacement, pk=placement_id, floorplan=floorplan)
             placement.device = device
-            placement.camera_type = payload.get("camera_type", placement.camera_type)
+            if "camera_type_id" in payload:
+                placement.camera_type = camera_type
             placement.x_pct = x_pct
             placement.y_pct = y_pct
             placement.direction_degrees = direction
@@ -146,7 +185,7 @@ class CameraPlacementSaveView(PermissionRequiredMixin, View):
             placement = CameraPlacement.objects.create(
                 floorplan=floorplan,
                 device=device,
-                camera_type=payload.get("camera_type", CameraPlacement.TYPE_OTHER),
+                camera_type=camera_type,
                 x_pct=x_pct,
                 y_pct=y_pct,
                 direction_degrees=direction,
@@ -165,3 +204,54 @@ class CameraPlacementQuickDeleteView(PermissionRequiredMixin, View):
         placement = get_object_or_404(CameraPlacement, pk=pk)
         placement.delete()
         return JsonResponse({"status": "deleted"})
+
+
+class DeviceSearchView(LoginRequiredMixin, View):
+    """
+    Small JSON search endpoint used by the "Add camera" modal's device
+    lookup field, so the canvas never needs a raw NetBox REST API token in
+    the browser — it reuses the logged-in session instead. Read-only.
+
+    Optionally scoped to a FloorPlan's site/location via ?floorplan_id=,
+    so devices belonging to that site/location are shown first.
+    """
+
+    def get(self, request):
+        query = request.GET.get("q", "").strip()
+        if len(query) < 2:
+            return JsonResponse({"results": []})
+
+        devices = Device.objects.filter(name__icontains=query).select_related("site", "location")
+
+        floorplan_id = request.GET.get("floorplan_id")
+        if floorplan_id:
+            floorplan = FloorPlan.objects.filter(pk=floorplan_id).first()
+            if floorplan:
+                if floorplan.location_id:
+                    devices = devices.order_by(
+                        models.Case(
+                            models.When(location_id=floorplan.location_id, then=0),
+                            models.When(site_id=floorplan.site_id, then=1),
+                            default=2,
+                        )
+                    )
+                else:
+                    devices = devices.order_by(
+                        models.Case(
+                            models.When(site_id=floorplan.site_id, then=0),
+                            default=1,
+                        )
+                    )
+
+        devices = devices[:15]
+        return JsonResponse({
+            "results": [
+                {
+                    "id": d.pk,
+                    "name": d.name,
+                    "site": str(d.site) if d.site else "",
+                    "location": str(d.location) if d.location else "",
+                }
+                for d in devices
+            ]
+        })

@@ -23,6 +23,7 @@
     {% if can_edit %}
       <p class="text-muted mt-2 small">Click anywhere on the image to place a camera. Click an existing marker to edit or move it.</p>
     {% endif %}
+    <div id="cfp-error-banner" class="alert alert-danger mt-2" style="display:none;"></div>
   </div>
 
   <div class="col-md-3">
@@ -32,6 +33,58 @@
         <p class="text-muted">Select a camera marker, or click the floor plan to add one.</p>
       </div>
     </div>
+    {% if can_edit %}
+    <p class="text-muted mt-2 small">
+      No camera types yet? <a href="{% url 'plugins:netbox_camera_floorplan:cameratype_add' %}">Add one</a> first, then come back here.
+    </p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Add-camera modal: replaces window.prompt() entirely -->
+<div class="modal fade" id="cfp-add-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Place a camera</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Device</label>
+          <input type="text" id="cfp-device-search" class="form-control" placeholder="Search devices by name…" autocomplete="off">
+          <div id="cfp-device-results" class="list-group mt-1" style="max-height:180px; overflow:auto;"></div>
+          <div id="cfp-device-selected" class="form-text text-success mt-1"></div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Camera type</label>
+          <select id="cfp-new-type" class="form-select"></select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="cfp-confirm-add" disabled>Place camera</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete-confirm modal: replaces window.confirm() -->
+<div class="modal fade" id="cfp-delete-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Delete camera marker?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>This removes the marker from the floor plan only — it does not delete the device itself.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="cfp-confirm-delete">Delete marker</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -39,9 +92,11 @@
   .cfp-marker { position:absolute; width:26px; height:26px; margin:-13px 0 0 -13px; cursor:pointer; }
   .cfp-marker .cfp-dot {
     position:absolute; top:0; left:0; width:26px; height:26px; border-radius:50%;
-    background:#0a0f16; border:2px solid #f2a65a; display:flex; align-items:center; justify-content:center; font-size:13px;
+    background:#0a0f16; display:flex; align-items:center; justify-content:center; font-size:13px;
+    border:2px solid #f2a65a;
   }
   .cfp-marker.selected .cfp-dot { border-color:#fff; box-shadow:0 0 0 3px rgba(242,166,90,.4); }
+  .cfp-marker .cfp-dot img { width:16px; height:16px; object-fit:contain; }
   .cfp-marker .cfp-ring {
     position:absolute; top:-3px; left:-3px; width:32px; height:32px; border-radius:50%; border:2px solid #5a6b7d;
   }
@@ -55,6 +110,7 @@
     position:absolute; top:29px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:10px;
     background:rgba(10,15,22,.85); color:#dbe6f0; padding:2px 6px; border-radius:3px;
   }
+  #cfp-device-results .list-group-item { cursor:pointer; font-size:.85rem; }
 </style>
 
 <script>
@@ -62,12 +118,23 @@
   const floorplanId = {{ floorplan.pk }};
   const canEdit = {{ can_edit|yesno:"true,false" }};
   let cameras = {{ cameras_json|safe }};
+  const cameraTypes = {{ camera_types_json|safe }}; // [{id, name, color, icon_url}, ...]
   let selectedId = null;
+  let pendingClick = null;
+  let selectedNewDeviceId = null;
 
   const stage = document.getElementById('cfp-stage');
   const img = document.getElementById('cfp-floor-img');
   const markersLayer = document.getElementById('cfp-markers');
   const detail = document.getElementById('cfp-detail');
+  const errorBanner = document.getElementById('cfp-error-banner');
+
+  function showError(message){
+    errorBanner.textContent = message;
+    errorBanner.style.display = 'block';
+    window.clearTimeout(showError._t);
+    showError._t = window.setTimeout(() => { errorBanner.style.display = 'none'; }, 6000);
+  }
 
   function getCookie(name) {
     const value = `; ${document.cookie}`;
@@ -75,16 +142,37 @@
     if (parts.length === 2) return parts.pop().split(';').shift();
   }
 
-  const CAMERA_ICONS = {
-    dome: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 15 A8 8 0 0 1 20 15 Z" fill="#f2a65a"/><rect x="9" y="15" width="6" height="3" rx="1" fill="#f2a65a"/></svg>`,
-    ptz: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="5" fill="#f2a65a"/><path d="M12 2 L14 6 L10 6 Z" fill="#f2a65a"/><path d="M12 22 L14 18 L10 18 Z" fill="#f2a65a"/><path d="M2 12 L6 10 L6 14 Z" fill="#f2a65a"/><path d="M22 12 L18 10 L18 14 Z" fill="#f2a65a"/></svg>`,
-    bullet: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="9" width="14" height="6" rx="2" fill="#f2a65a"/><path d="M17 10 L21 8 L21 16 L17 14 Z" fill="#f2a65a"/></svg>`,
-    other: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="4" y="7" width="16" height="10" rx="2" fill="#f2a65a"/><circle cx="12" cy="12" r="3" fill="#0a0f16"/></svg>`,
-  };
-  const CAMERA_TYPE_LABELS = { dome: 'Dome', ptz: 'PTZ', bullet: 'Bullet', other: 'Other' };
+  function getBsModal(el){
+    return bootstrap.Modal.getOrCreateInstance(el);
+  }
 
-  function cameraIcon(type){
-    return CAMERA_ICONS[type] || CAMERA_ICONS.other;
+  function cameraTypeById(id){
+    return cameraTypes.find(t => t.id === id);
+  }
+
+  function cameraIconHtml(typeId){
+    const type = cameraTypeById(typeId);
+    if(type && type.icon_url){
+      return `<img src="${type.icon_url}" alt="${type.name}">`;
+    }
+    const color = type ? type.color : '#f2a65a';
+    return `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${color};"></span>`;
+  }
+
+  function cameraTypeColor(typeId){
+    const type = cameraTypeById(typeId);
+    return type ? type.color : '#f2a65a';
+  }
+
+  function cameraTypeName(typeId){
+    const type = cameraTypeById(typeId);
+    return type ? type.name : 'Unset';
+  }
+
+  function populateTypeSelect(selectEl, selectedTypeId){
+    selectEl.innerHTML = cameraTypes.map(t =>
+      `<option value="${t.id}" ${t.id === selectedTypeId ? 'selected' : ''}>${t.name}</option>`
+    ).join('') || '<option value="">No camera types defined yet</option>';
   }
 
   function renderMarkers(){
@@ -95,10 +183,11 @@
       el.style.left = cam.x_pct + '%';
       el.style.top = cam.y_pct + '%';
       const ringClass = cam.reachability === true ? 'ok' : (cam.reachability === false ? 'down' : '');
+      const color = cameraTypeColor(cam.camera_type_id);
       el.innerHTML = `
-        <div class="cfp-cone" style="transform:rotate(${cam.direction_degrees}deg);"></div>
+        <div class="cfp-cone" style="transform:rotate(${cam.direction_degrees}deg); border-bottom-color:${color}66;"></div>
         <div class="cfp-ring ${ringClass}"></div>
-        <div class="cfp-dot">${cameraIcon(cam.camera_type)}</div>
+        <div class="cfp-dot" style="border-color:${color};">${cameraIconHtml(cam.camera_type_id)}</div>
         <div class="cfp-tag">${cam.device_name}</div>
       `;
       el.addEventListener('click', (e) => { e.stopPropagation(); selectedId = cam.id; renderMarkers(); renderDetail(); });
@@ -124,13 +213,7 @@
     detail.innerHTML = `
       <h5><a href="${cam.device_url}">${cam.device_name}</a></h5>
       <div class="mb-2"><strong>Camera type</strong><br>
-        ${canEdit ? `
-          <select id="cfp-type" class="form-select form-select-sm">
-            ${Object.entries(CAMERA_TYPE_LABELS).map(([val, label]) =>
-              `<option value="${val}" ${cam.camera_type === val ? 'selected' : ''}>${label}</option>`
-            ).join('')}
-          </select>
-        ` : CAMERA_TYPE_LABELS[cam.camera_type] || 'Other'}
+        ${canEdit ? `<select id="cfp-type" class="form-select form-select-sm"></select>` : cameraTypeName(cam.camera_type_id)}
       </div>
       <div class="mb-2"><strong>Uplink</strong><br>${uplinkHtml}</div>
       <div class="mb-2"><strong>Power</strong><br>${powerHtml}</div>
@@ -147,22 +230,28 @@
     `;
 
     if(canEdit){
+      populateTypeSelect(document.getElementById('cfp-type'), cam.camera_type_id);
+
       document.getElementById('cfp-save-btn').addEventListener('click', () => {
         cam.direction_degrees = parseInt(document.getElementById('cfp-direction').value, 10) || 0;
         cam.notes = document.getElementById('cfp-notes').value;
-        cam.camera_type = document.getElementById('cfp-type').value;
+        const typeVal = document.getElementById('cfp-type').value;
+        cam.camera_type_id = typeVal ? parseInt(typeVal, 10) : null;
         savePlacement(cam);
       });
       document.getElementById('cfp-delete-btn').addEventListener('click', () => {
-        if(!confirm('Delete this camera marker? This does not delete the device itself.')) return;
-        fetch(`/plugins/camera-floorplan/cameras/${cam.id}/quick-delete/`, {
-          method: 'POST',
-          headers: { 'X-CSRFToken': getCookie('csrftoken') },
-        }).then(() => {
-          cameras = cameras.filter(c => c.id !== cam.id);
-          selectedId = null;
-          renderMarkers(); renderDetail();
-        });
+        getBsModal(document.getElementById('cfp-delete-modal')).show();
+        document.getElementById('cfp-confirm-delete').onclick = () => {
+          fetch(`/plugins/camera-floorplan/cameras/${cam.id}/quick-delete/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCookie('csrftoken') },
+          }).then(() => {
+            cameras = cameras.filter(c => c.id !== cam.id);
+            selectedId = null;
+            getBsModal(document.getElementById('cfp-delete-modal')).hide();
+            renderMarkers(); renderDetail();
+          }).catch(() => showError('Could not delete this marker. Please try again.'));
+        };
       });
     }
   }
@@ -172,13 +261,75 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
       body: JSON.stringify({
-        id: cam.id, device_id: cam.device_id, camera_type: cam.camera_type,
+        id: cam.id, device_id: cam.device_id, camera_type_id: cam.camera_type_id,
         x_pct: cam.x_pct, y_pct: cam.y_pct,
         direction_degrees: cam.direction_degrees, notes: cam.notes,
       }),
     }).then(r => r.json()).then(data => {
+      if(data.error){ showError(data.error); return; }
       if(data.id) cam.id = data.id;
       renderMarkers();
+    }).catch(() => showError('Could not save this camera. Please try again.'));
+  }
+
+  // ---- Add-camera modal wiring (replaces window.prompt()) ----
+  let searchDebounce = null;
+  const searchInput = document.getElementById('cfp-device-search');
+  const resultsBox = document.getElementById('cfp-device-results');
+  const selectedLabel = document.getElementById('cfp-device-selected');
+  const confirmAddBtn = document.getElementById('cfp-confirm-add');
+
+  function searchDevices(query){
+    if(query.trim().length < 2){ resultsBox.innerHTML = ''; return; }
+    fetch(`/plugins/camera-floorplan/device-search/?q=${encodeURIComponent(query)}&floorplan_id=${floorplanId}`)
+      .then(r => r.json())
+      .then(data => {
+        resultsBox.innerHTML = data.results.map(d => {
+          const meta = [d.location, d.site].filter(Boolean).join(', ');
+          return `<div class="list-group-item" data-id="${d.id}" data-name="${d.name}" data-meta="${meta}">${d.name}${meta ? ' <span class="text-muted">(' + meta + ')</span>' : ''}</div>`;
+        }).join('') || '<div class="text-muted small p-1">No matching devices.</div>';
+        resultsBox.querySelectorAll('.list-group-item[data-id]').forEach(item => {
+          item.addEventListener('click', () => {
+            selectedNewDeviceId = parseInt(item.dataset.id, 10);
+            const meta = item.dataset.meta;
+            selectedLabel.textContent = `Selected: ${item.dataset.name}${meta ? ' (' + meta + ')' : ''}`;
+            resultsBox.innerHTML = '';
+            searchInput.value = item.dataset.name;
+            confirmAddBtn.disabled = false;
+          });
+        });
+      })
+      .catch(() => showError('Device search failed. Please try again.'));
+  }
+
+  if(searchInput){
+    searchInput.addEventListener('input', (e) => {
+      selectedNewDeviceId = null;
+      confirmAddBtn.disabled = true;
+      selectedLabel.textContent = '';
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => searchDevices(e.target.value), 250);
+    });
+  }
+
+  if(confirmAddBtn){
+    confirmAddBtn.addEventListener('click', () => {
+      if(!selectedNewDeviceId || !pendingClick) return;
+      const typeVal = document.getElementById('cfp-new-type').value;
+      const cameraTypeId = typeVal ? parseInt(typeVal, 10) : null;
+      fetch(`/plugins/camera-floorplan/floorplans/${floorplanId}/save-camera/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+        body: JSON.stringify({
+          device_id: selectedNewDeviceId, camera_type_id: cameraTypeId,
+          x_pct: pendingClick.x_pct, y_pct: pendingClick.y_pct,
+          direction_degrees: 0,
+        }),
+      }).then(r => r.json()).then(data => {
+        if(data.error){ showError(data.error); return; }
+        getBsModal(document.getElementById('cfp-add-modal')).hide();
+        location.reload(); // simplest way to refetch the device name/links server-side
+      }).catch(() => showError('Could not place this camera. Please try again.'));
     });
   }
 
@@ -188,29 +339,14 @@
       const rect = img.getBoundingClientRect();
       const x = ((e.clientX - rect.left) / rect.width) * 100;
       const y = ((e.clientY - rect.top) / rect.height) * 100;
-      const deviceId = prompt('Enter the NetBox device ID for this camera (find it on the device page URL):');
-      if(!deviceId) return;
-      const typeInput = (prompt('Camera type: dome, ptz, or bullet (leave blank for other):') || '').trim().toLowerCase();
-      const cameraType = ['dome','ptz','bullet'].includes(typeInput) ? typeInput : 'other';
-      const newCam = {
-        id: null, device_id: parseInt(deviceId, 10), device_name: 'Loading...', device_url: '#',
-        camera_type: cameraType,
-        x_pct: Math.max(0, Math.min(100, x)), y_pct: Math.max(0, Math.min(100, y)),
-        direction_degrees: 0, power_source_override: '', notes: '', reachability: null,
-        uplinks: [], power_terminations: [],
-      };
-      fetch(`/plugins/camera-floorplan/floorplans/${floorplanId}/save-camera/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-        body: JSON.stringify({
-          device_id: newCam.device_id, camera_type: newCam.camera_type,
-          x_pct: newCam.x_pct, y_pct: newCam.y_pct,
-          direction_degrees: 0,
-        }),
-      }).then(r => r.json()).then(data => {
-        if(data.error){ alert(data.error); return; }
-        location.reload(); // simplest way to refetch the device name/links server-side
-      });
+      pendingClick = { x_pct: Math.max(0, Math.min(100, x)), y_pct: Math.max(0, Math.min(100, y)) };
+      selectedNewDeviceId = null;
+      searchInput.value = '';
+      resultsBox.innerHTML = '';
+      selectedLabel.textContent = '';
+      confirmAddBtn.disabled = true;
+      populateTypeSelect(document.getElementById('cfp-new-type'), null);
+      getBsModal(document.getElementById('cfp-add-modal')).show();
     });
   }
 

@@ -4,7 +4,19 @@ from dcim.models import Device, Location, Site
 from netbox.forms import NetBoxModelForm
 from utilities.forms.fields import DynamicModelChoiceField
 
-from .models import CameraPlacement, FloorPlan
+from .models import CameraPlacement, CameraType, FloorPlan
+
+
+class CameraTypeForm(NetBoxModelForm):
+    class Meta:
+        model = CameraType
+        fields = ["name", "slug", "preset_icon", "icon_image", "color", "description", "tags"]
+        widgets = {
+            "color": forms.TextInput(attrs={"type": "color", "class": "form-control form-control-color"}),
+        }
+        help_texts = {
+            "preset_icon": "Quick start: pick one of the built-in icons below.",
+        }
 
 
 class FloorPlanForm(NetBoxModelForm):
@@ -24,6 +36,11 @@ class CameraPlacementForm(NetBoxModelForm):
     device = DynamicModelChoiceField(
         queryset=Device.objects.all(),
         help_text="Select the existing NetBox device for this camera.",
+    )
+    camera_type = DynamicModelChoiceField(
+        queryset=CameraType.objects.all(),
+        required=False,
+        help_text="Physical camera type — manage these under Plugins → Camera Types.",
     )
 
     class Meta:

@@ -1,5 +1,6 @@
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from django.templatetags.static import static
 from django.urls import reverse
 
 from dcim.models import Device, Location, Site
@@ -48,6 +49,69 @@ class FloorPlan(NetBoxModel):
         return reverse("plugins:netbox_camera_floorplan:floorplan", args=[self.pk])
 
 
+class CameraType(NetBoxModel):
+    """
+    A manageable camera type (e.g. Dome, PTZ, Bullet, Fisheye, Thermal...)
+    with its own icon and marker color. Replaces what used to be a hardcoded
+    set of choices on CameraPlacement — new types can be added from the
+    NetBox UI with no code changes required.
+    """
+
+    PRESET_DOME = "dome"
+    PRESET_PTZ = "ptz"
+    PRESET_BULLET = "bullet"
+    PRESET_GENERIC = "generic"
+    PRESET_CHOICES = [
+        ("", "None (use color swatch only)"),
+        (PRESET_DOME, "Dome (built-in)"),
+        (PRESET_PTZ, "PTZ (built-in)"),
+        (PRESET_BULLET, "Bullet (built-in)"),
+        (PRESET_GENERIC, "Generic camera (built-in)"),
+    ]
+
+    name = models.CharField(max_length=50, unique=True)
+    slug = models.SlugField(max_length=50, unique=True)
+    preset_icon = models.CharField(
+        max_length=20,
+        blank=True,
+        choices=PRESET_CHOICES,
+        help_text="Pick a built-in icon, or leave blank and upload your own below.",
+    )
+    icon_image = models.ImageField(
+        upload_to="camera_floorplan_icons/",
+        blank=True,
+        null=True,
+        help_text="Optional: upload your own icon (PNG/SVG, ~32x32). Overrides the built-in preset if set.",
+    )
+    color = models.CharField(
+        max_length=7,
+        default="#f2a65a",
+        help_text="Hex color used for the marker ring and direction cone (e.g. #f2a65a).",
+    )
+    description = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+    def get_absolute_url(self):
+        return reverse("plugins:netbox_camera_floorplan:cameratype_list")
+
+    def get_icon_url(self):
+        """
+        Custom uploaded icon takes priority; otherwise fall back to the
+        chosen built-in preset; otherwise None (marker falls back to a
+        plain color dot).
+        """
+        if self.icon_image:
+            return self.icon_image.url
+        if self.preset_icon:
+            return static(f"netbox_camera_floorplan/icons/{self.preset_icon}.svg")
+        return None
+
+
 class CameraPlacement(NetBoxModel):
     """
     A single camera's pinned position on a FloorPlan. Deliberately does NOT
@@ -56,17 +120,6 @@ class CameraPlacement(NetBoxModel):
     and power ports in NetBox core, and is looked up live for display so it
     can never drift out of sync with the source of truth.
     """
-
-    TYPE_DOME = "dome"
-    TYPE_PTZ = "ptz"
-    TYPE_BULLET = "bullet"
-    TYPE_OTHER = "other"
-    TYPE_CHOICES = [
-        (TYPE_DOME, "Dome"),
-        (TYPE_PTZ, "PTZ"),
-        (TYPE_BULLET, "Bullet"),
-        (TYPE_OTHER, "Other"),
-    ]
 
     POWER_UNKNOWN = ""
     POWER_POE = "poe"
@@ -88,10 +141,12 @@ class CameraPlacement(NetBoxModel):
         related_name="floorplan_placements",
         help_text="The camera, as an existing NetBox device.",
     )
-    camera_type = models.CharField(
-        max_length=10,
-        choices=TYPE_CHOICES,
-        default=TYPE_OTHER,
+    camera_type = models.ForeignKey(
+        to=CameraType,
+        on_delete=models.SET_NULL,
+        related_name="placements",
+        null=True,
+        blank=True,
         help_text="Physical camera type, used to pick the marker icon on the floor plan.",
     )
     x_pct = models.DecimalField(

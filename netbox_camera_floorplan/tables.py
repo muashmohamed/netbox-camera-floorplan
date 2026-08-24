@@ -1,8 +1,32 @@
 import django_tables2 as tables
+from django.utils.html import format_html
 
 from netbox.tables import NetBoxTable
 
-from .models import CameraPlacement, FloorPlan
+from .models import CameraPlacement, CameraType, FloorPlan
+
+
+class CameraTypeTable(NetBoxTable):
+    name = tables.Column(linkify=True)
+    icon_preview = tables.Column(empty_values=(), orderable=False, verbose_name="Icon")
+    swatch = tables.Column(empty_values=(), orderable=False, verbose_name="Color", accessor="color")
+
+    class Meta(NetBoxTable.Meta):
+        model = CameraType
+        fields = ("pk", "id", "name", "icon_preview", "swatch", "description", "tags")
+        default_columns = ("name", "icon_preview", "swatch", "description")
+
+    def render_icon_preview(self, record):
+        icon_url = record.get_icon_url()
+        if icon_url:
+            return format_html('<img src="{}" style="width:24px;height:24px;object-fit:contain;">', icon_url)
+        return format_html('<span class="text-muted">—</span>')
+
+    def render_swatch(self, value):
+        return format_html(
+            '<span style="display:inline-block;width:16px;height:16px;border-radius:3px;background:{};vertical-align:middle;"></span> {}',
+            value, value,
+        )
 
 
 class FloorPlanTable(NetBoxTable):

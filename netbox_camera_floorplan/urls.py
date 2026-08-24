@@ -5,6 +5,15 @@ from . import views
 app_name = "netbox_camera_floorplan"
 
 urlpatterns = [
+    # CameraType CRUD — manage camera types and their icons/colors
+    path("camera-types/", views.CameraTypeListView.as_view(), name="cameratype_list"),
+    path("camera-types/add/", views.CameraTypeEditView.as_view(), name="cameratype_add"),
+    path("camera-types/<int:pk>/edit/", views.CameraTypeEditView.as_view(), name="cameratype_edit"),
+    path("camera-types/<int:pk>/delete/", views.CameraTypeDeleteView.as_view(), name="cameratype_delete"),
+
+    # Device search (used by the "add camera" modal, replaces window.prompt())
+    path("device-search/", views.DeviceSearchView.as_view(), name="device_search"),
+
     # FloorPlan CRUD
     path("floorplans/", views.FloorPlanListView.as_view(), name="floorplan_list"),
     path("floorplans/add/", views.FloorPlanEditView.as_view(), name="floorplan_add"),

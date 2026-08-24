@@ -3,7 +3,20 @@ from django.db.models import Q
 
 from netbox.filtersets import NetBoxModelFilterSet
 
-from .models import CameraPlacement, FloorPlan
+from .models import CameraPlacement, CameraType, FloorPlan
+
+
+class CameraTypeFilterSet(NetBoxModelFilterSet):
+    class Meta:
+        model = CameraType
+        fields = ("id", "name", "slug")
+
+    def search(self, queryset, name, value):
+        if not value.strip():
+            return queryset
+        return queryset.filter(
+            Q(name__icontains=value) | Q(description__icontains=value)
+        )
 
 
 class FloorPlanFilterSet(NetBoxModelFilterSet):
@@ -24,7 +37,7 @@ class CameraPlacementFilterSet(NetBoxModelFilterSet):
 
     class Meta:
         model = CameraPlacement
-        fields = ("id", "floorplan", "device")
+        fields = ("id", "floorplan", "device", "camera_type")
 
     def search(self, queryset, name, value):
         if not value.strip():

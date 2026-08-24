@@ -4,6 +4,51 @@ Place CCTV cameras on floor plan images inside NetBox, and view each
 camera's real uplink switch/port and power connection — pulled live from
 NetBox's own cable and power port data, never duplicated or hand-entered.
 
+## v0.2.0 changes (this version)
+
+- **Camera Types are now a real, manageable NetBox model.** Go to
+  **Plugins → Camera Types** to add/edit/delete types (name, icon, color,
+  description) — no more hardcoded Dome/PTZ/Bullet/Other choices.
+- **Built-in icon presets.** When adding a Camera Type, pick one of the
+  built-in icons (Dome, PTZ, Bullet, Generic camera) from a dropdown — no
+  file to prepare. You can still upload your own custom icon image instead;
+  an uploaded image always takes priority over the preset.
+- The floor plan canvas now builds its marker icons dynamically from
+  whatever Camera Types you've defined.
+- **All native browser dialogs are gone.** Placing a camera, choosing its
+  type, and deleting a marker now use in-app modals with a real device
+  search box, instead of `window.prompt()` / `window.confirm()` / `alert()`.
+- The device search in the "Add camera" modal now shows each device's
+  Location (not just Site), and sorts devices in the current floor plan's
+  own Location/Site to the top.
+
+### A note on camera devices and racks
+
+This plugin never touches rack position. When you create a camera Device
+in NetBox, you don't need to assign it to a rack at all — wall/ceiling/
+boundary-mounted cameras are exactly what floor plan placement (`x_pct`/
+`y_pct`) is for. Just give the device a Site (and optionally a Location);
+skip the rack field entirely.
+
+### Upgrading from an earlier install
+
+`CameraPlacement.camera_type` changed from a fixed-choice text field to a
+foreign key pointing at the new `CameraType` model. On your test server:
+
+1. Pull in these updated files.
+2. Add at least one `CameraType` row before you place new cameras — either
+   via **Plugins → Camera Types → Add Camera Type** in the UI, or via the
+   Django shell.
+3. Run migrations as usual:
+   ```bash
+   python manage.py makemigrations netbox_camera_floorplan
+   python manage.py migrate
+   ```
+4. Any cameras placed under the old string-based types will show up with
+   **no camera type** afterward (the field is nullable) — open each one on
+   the canvas and reassign it from the new dropdown, or re-run your seed
+   script against the new model.
+
 ## What this does
 
 - Upload a floor plan image (e.g. exported from AutoCAD as PNG/JPG) per
@@ -110,12 +155,3 @@ This plugin manages **positions and directions only**. It does not create,
 edit, or delete Devices, Interfaces, Cables, or Power Ports — those remain
 fully owned by NetBox core (or your existing MCP/automation tooling). This
 keeps floor plan data and network topology data from ever drifting apart.
-
-## If you generated 0001_initial.py yourself
-
-If this repo's `migrations/` folder is still empty and you had to enable
-`DEVELOPER = True` to generate the migration yourself (see the main
-installation troubleshooting), copy the generated file back into this
-repo at `netbox_camera_floorplan/migrations/0001_initial.py` and commit it.
-This means future installs on other servers won't need `DEVELOPER` mode at
-all — `migrate` will just work directly.
