@@ -24,6 +24,10 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
 - `CameraType` is exposed in the REST API at
   `/api/plugins/camera-floorplan/camera-types/`, alongside the existing
   `floorplans/` and `cameras/` endpoints.
+- Fixed a `NoReverseMatch` error on the Camera Types (and FloorPlan /
+  CameraPlacement) list pages — NetBox's standard object table always
+  links each row to a change-history view, which none of these three
+  models had registered. All three now have proper changelog views/URLs.
 
 ### A note on camera devices and racks
 

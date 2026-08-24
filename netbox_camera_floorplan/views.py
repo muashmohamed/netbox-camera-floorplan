@@ -36,6 +36,10 @@ class CameraTypeDeleteView(generic.ObjectDeleteView):
     queryset = CameraType.objects.all()
 
 
+class CameraTypeChangeLogView(generic.ObjectChangeLogView):
+    queryset = CameraType.objects.all()
+
+
 # ---------------------------------------------------------------------------
 # FloorPlan CRUD (standard NetBox generic views)
 # ---------------------------------------------------------------------------
@@ -55,6 +59,10 @@ class FloorPlanDeleteView(generic.ObjectDeleteView):
     queryset = FloorPlan.objects.all()
 
 
+class FloorPlanChangeLogView(generic.ObjectChangeLogView):
+    queryset = FloorPlan.objects.all()
+
+
 # ---------------------------------------------------------------------------
 # CameraPlacement CRUD
 # ---------------------------------------------------------------------------
@@ -66,6 +74,10 @@ class CameraPlacementListView(generic.ObjectListView):
 
 
 class CameraPlacementDeleteView(generic.ObjectDeleteView):
+    queryset = CameraPlacement.objects.all()
+
+
+class CameraPlacementChangeLogView(generic.ObjectChangeLogView):
     queryset = CameraPlacement.objects.all()
 
 
