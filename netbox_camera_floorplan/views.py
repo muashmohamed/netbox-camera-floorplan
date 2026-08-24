@@ -1,10 +1,11 @@
 import json
 
+from django.contrib import messages
 from django.contrib.auth.mixins import PermissionRequiredMixin
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
 from django.views.decorators.csrf import csrf_protect
 from django.utils.decorators import method_decorator
@@ -32,6 +33,18 @@ class CameraTypeEditView(generic.ObjectEditView):
     queryset = CameraType.objects.all()
     form = forms.CameraTypeForm
 
+    def post(self, request, *args, **kwargs):
+        try:
+            return super().post(request, *args, **kwargs)
+        except IntegrityError:
+            messages.error(
+                request,
+                "A camera type with that name (or slug) already exists. "
+                "This usually happens from double-clicking Create/Save — "
+                "please check the list before adding it again.",
+            )
+            return redirect(request.path)
+
 
 class CameraTypeDeleteView(generic.ObjectDeleteView):
     queryset = CameraType.objects.all()
@@ -55,6 +68,18 @@ class FloorPlanListView(generic.ObjectListView):
 class FloorPlanEditView(generic.ObjectEditView):
     queryset = FloorPlan.objects.all()
     form = forms.FloorPlanForm
+
+    def post(self, request, *args, **kwargs):
+        try:
+            return super().post(request, *args, **kwargs)
+        except IntegrityError:
+            messages.error(
+                request,
+                "A floor plan with that name already exists for this site/location. "
+                "This usually happens from double-clicking Create/Save — "
+                "please check the list before adding it again.",
+            )
+            return redirect(request.path)
 
 
 class FloorPlanDeleteView(generic.ObjectDeleteView):

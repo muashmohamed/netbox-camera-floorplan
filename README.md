@@ -63,6 +63,14 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
   locations — Site as the parent, Location as the child, matching how
   they relate everywhere else in NetBox. Makes managing many floor plans
   across multiple sites/buildings much easier than a flat list.
+- Extended that filter one level higher: Site Group is now the top-level
+  filter (e.g. a powerhouse grouping several sites like its
+  transformers/office), narrowing Site, which narrows Location. Three
+  levels of cascading filters total: Site Group → Site → Location.
+- Fixed a raw `500 IntegrityError` when adding a Camera Type or Floor
+  Plan with a name that already exists (usually from double-clicking
+  Create/Save). Now shows a clear message and returns to the form
+  instead of crashing.
 
 ### A note on camera devices and racks
 
