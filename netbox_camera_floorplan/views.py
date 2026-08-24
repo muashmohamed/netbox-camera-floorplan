@@ -49,6 +49,7 @@ class FloorPlanListView(generic.ObjectListView):
     queryset = FloorPlan.objects.all()
     table = tables.FloorPlanTable
     filterset = filtersets.FloorPlanFilterSet
+    filterset_form = forms.FloorPlanFilterForm
 
 
 class FloorPlanEditView(generic.ObjectEditView):

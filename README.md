@@ -55,6 +55,14 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
 - Added a "Marker label" dropdown above the floor plan to choose Name
   only, IP only, or both — remembered per-browser so it doesn't reset
   every time you open a floor plan.
+- Removed the direction-facing cone overlay from markers (kept the
+  underlying direction data and the slider in the details panel, just
+  not visualized on the map for now).
+- Added a proper filter panel to the Floor Plans list page: pick a Site
+  first, and the Location dropdown narrows to just that site's
+  locations — Site as the parent, Location as the child, matching how
+  they relate everywhere else in NetBox. Makes managing many floor plans
+  across multiple sites/buildings much easier than a flat list.
 
 ### A note on camera devices and racks
 

@@ -1,8 +1,8 @@
 from django import forms
 
 from dcim.models import Device, Location, Site
-from netbox.forms import NetBoxModelForm
-from utilities.forms.fields import DynamicModelChoiceField
+from netbox.forms import NetBoxModelFilterSetForm, NetBoxModelForm
+from utilities.forms.fields import DynamicModelChoiceField, DynamicModelMultipleChoiceField
 
 from .models import CameraPlacement, CameraType, FloorPlan
 
@@ -30,6 +30,28 @@ class FloorPlanForm(NetBoxModelForm):
     class Meta:
         model = FloorPlan
         fields = ["name", "site", "location", "image", "comments", "tags"]
+
+
+class FloorPlanFilterForm(NetBoxModelFilterSetForm):
+    """
+    Powers the filter panel on the Floor Plans list page. Site is treated
+    as the parent — picking one narrows the Location dropdown to just
+    that site's locations, mirroring how Sites and Locations relate to
+    each other everywhere else in NetBox.
+    """
+    model = FloorPlan
+
+    site_id = DynamicModelMultipleChoiceField(
+        queryset=Site.objects.all(),
+        required=False,
+        label="Site",
+    )
+    location_id = DynamicModelMultipleChoiceField(
+        queryset=Location.objects.all(),
+        required=False,
+        label="Location",
+        query_params={"site_id": "$site_id"},
+    )
 
 
 class CameraPlacementForm(NetBoxModelForm):
