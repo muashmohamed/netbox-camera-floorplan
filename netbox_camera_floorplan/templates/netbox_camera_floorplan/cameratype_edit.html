@@ -1,0 +1,26 @@
+{% extends 'generic/object_edit.html' %}
+
+{% block content %}
+{{ block.super }}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Tie the "field of view" choice to the camera type being picked, so
+  // it's a deliberate step rather than a silently-applied default. Based
+  // on real-world camera specs: Dome ~90-120° (we use 90 as baseline),
+  // Bullet ~70-110° (80 as a representative middle value), PTZ varies
+  // hugely with zoom (~5° zoomed in to ~55-90° zoomed out — 60 as a
+  // moderately-zoomed-out default). Always editable afterward.
+  var FOV_BY_PRESET = { dome: 90, bullet: 80, ptz: 60, generic: 90 };
+  var presetSelect = document.getElementById('id_preset_icon');
+  var fovInput = document.getElementById('id_fov_degrees');
+  if (!presetSelect || !fovInput) return;
+
+  presetSelect.addEventListener('change', function() {
+    var suggested = FOV_BY_PRESET[presetSelect.value];
+    if (suggested !== undefined) {
+      fovInput.value = suggested;
+    }
+  });
+});
+</script>
+{% endblock %}

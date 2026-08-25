@@ -125,6 +125,10 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
   moderately zoomed-out view; adjust per your actual hardware if known).
   Edit any Camera Type to change its FOV. **Requires a new migration**
   — see below.
+- Picking a preset icon (Dome/Bullet/PTZ/Generic) when adding or editing
+  a Camera Type now auto-fills the recommended FOV for that type, so
+  it's a deliberate choice made alongside picking the icon rather than a
+  silent default you might not notice — still fully editable afterward.
 
 ### A note on camera devices and racks
 
