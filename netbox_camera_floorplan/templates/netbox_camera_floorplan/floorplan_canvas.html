@@ -21,6 +21,13 @@
         <option value="name">Name only</option>
         <option value="ip">IP only</option>
       </select>
+      <label for="cfp-marker-size" class="form-label small mb-0 text-muted ms-2">Marker size:</label>
+      <select id="cfp-marker-size" class="form-select form-select-sm" style="max-width:140px;">
+        <option value="small">Small</option>
+        <option value="medium" selected>Medium</option>
+        <option value="large">Large</option>
+        <option value="xlarge">Extra Large</option>
+      </select>
     </div>
     <div id="cfp-stage-wrap" style="position:relative; border:1px solid var(--tblr-border-color); overflow:auto; background:#0a0f16;">
       <div id="cfp-stage" style="position:relative; display:inline-block;">
@@ -97,27 +104,42 @@
 </div>
 
 <style>
-  .cfp-marker { position:absolute; width:26px; height:26px; margin:-13px 0 0 -13px; cursor:pointer; }
+  #cfp-markers {
+    --cfp-size: 26px;
+    --cfp-ring-size: 32px;
+    --cfp-icon-size: 16px;
+    --cfp-icon-pad: 3px;
+    --cfp-tag-font: 10px;
+  }
+  .cfp-marker {
+    position:absolute; width:var(--cfp-size); height:var(--cfp-size);
+    margin: calc(var(--cfp-size) / -2) 0 0 calc(var(--cfp-size) / -2);
+    cursor:pointer;
+  }
   .cfp-marker .cfp-dot {
-    position:absolute; top:0; left:0; width:26px; height:26px; border-radius:50%;
+    position:absolute; top:0; left:0; width:var(--cfp-size); height:var(--cfp-size); border-radius:50%;
     background:#0a0f16; display:flex; align-items:center; justify-content:center; font-size:13px;
     border:2px solid #f2a65a;
   }
   .cfp-marker.selected .cfp-dot { border-color:#fff; box-shadow:0 0 0 3px rgba(242,166,90,.4); }
   .cfp-marker .cfp-dot img {
-    width:16px; height:16px; object-fit:contain;
-    background:#f4f6f8; border-radius:50%; padding:3px; box-sizing:content-box;
+    width:var(--cfp-icon-size); height:var(--cfp-icon-size); object-fit:contain;
+    background:#f4f6f8; border-radius:50%; padding:var(--cfp-icon-pad); box-sizing:content-box;
   }
   .cfp-marker .cfp-ring {
-    position:absolute; top:-3px; left:-3px; width:32px; height:32px; border-radius:50%; border:2px solid #5a6b7d;
+    position:absolute; border-radius:50%; border:2px solid #5a6b7d;
+    width:var(--cfp-ring-size); height:var(--cfp-ring-size);
+    top: calc((var(--cfp-size) - var(--cfp-ring-size)) / 2);
+    left: calc((var(--cfp-size) - var(--cfp-ring-size)) / 2);
   }
   .cfp-marker .cfp-ring.ok { border-color:#45c46a; }
   .cfp-marker .cfp-ring.down { border-color:#e5484d; }
   .cfp-marker .cfp-tag {
-    position:absolute; top:29px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:10px;
+    position:absolute; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:var(--cfp-tag-font);
+    top: calc(var(--cfp-size) + 3px);
     background:rgba(10,15,22,.85); color:#dbe6f0; padding:2px 6px; border-radius:3px; text-align:center;
   }
-  .cfp-marker .cfp-tag-ip { color:#9db4c7; font-size:9px; }
+  .cfp-marker .cfp-tag-ip { color:#9db4c7; font-size:calc(var(--cfp-tag-font) - 1px); }
   #cfp-device-results .list-group-item { cursor:pointer; font-size:.85rem; }
 </style>
 
@@ -130,6 +152,25 @@
   let selectedId = null;
   const LABEL_MODE_KEY = 'netbox_camera_floorplan_label_mode';
   let labelMode = localStorage.getItem(LABEL_MODE_KEY) || 'both';
+
+  const MARKER_SIZE_KEY = 'netbox_camera_floorplan_marker_size';
+  const MARKER_SIZE_PRESETS = {
+    small:  { size: '18px', ring: '22px', icon: '11px', pad: '2px', font: '8px'  },
+    medium: { size: '26px', ring: '32px', icon: '16px', pad: '3px', font: '10px' },
+    large:  { size: '36px', ring: '44px', icon: '22px', pad: '4px', font: '12px' },
+    xlarge: { size: '48px', ring: '58px', icon: '30px', pad: '5px', font: '14px' },
+  };
+  let markerSize = localStorage.getItem(MARKER_SIZE_KEY) || 'medium';
+
+  function applyMarkerSize(){
+    const preset = MARKER_SIZE_PRESETS[markerSize] || MARKER_SIZE_PRESETS.medium;
+    const el = markersLayer;
+    el.style.setProperty('--cfp-size', preset.size);
+    el.style.setProperty('--cfp-ring-size', preset.ring);
+    el.style.setProperty('--cfp-icon-size', preset.icon);
+    el.style.setProperty('--cfp-icon-pad', preset.pad);
+    el.style.setProperty('--cfp-tag-font', preset.font);
+  }
   let pendingClick = null;
   let selectedNewDeviceId = null;
 
@@ -415,6 +456,17 @@
     });
   }
 
+  const markerSizeSelect = document.getElementById('cfp-marker-size');
+  if(markerSizeSelect){
+    markerSizeSelect.value = markerSize;
+    markerSizeSelect.addEventListener('change', () => {
+      markerSize = markerSizeSelect.value;
+      localStorage.setItem(MARKER_SIZE_KEY, markerSize);
+      applyMarkerSize();
+    });
+  }
+
+  applyMarkerSize();
   renderMarkers();
   renderDetail();
 })();

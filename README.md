@@ -103,6 +103,10 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
 - Removed the "Direction" slider from the camera details panel (the
   underlying field still exists in the database, just not shown or
   editable anymore — no migration needed for this).
+- Added a "Marker size" dropdown (Small / Medium / Large / Extra Large)
+  above the floor plan, remembered per-browser like the label toggle —
+  useful since a marker sized well for a small floor plan image can look
+  tiny or huge on a much larger one.
 
 ### A note on camera devices and racks
 
