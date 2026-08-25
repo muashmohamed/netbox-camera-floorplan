@@ -129,6 +129,9 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
   a Camera Type now auto-fills the recommended FOV for that type, so
   it's a deliberate choice made alongside picking the icon rather than a
   silent default you might not notice — still fully editable afterward.
+- Fixed the direction cone appearing to originate from a point near the
+  marker rather than exactly on it. Its anchor point is now computed
+  directly in pixels rather than via nested CSS `calc()`.
 
 ### A note on camera devices and racks
 

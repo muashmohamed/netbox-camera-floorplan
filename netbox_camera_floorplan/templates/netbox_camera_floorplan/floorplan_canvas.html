@@ -120,8 +120,6 @@
   }
   .cfp-marker .cfp-cone {
     position:absolute; width:0; height:0; transform-origin:0 0;
-    top: calc(var(--cfp-size) / 2);
-    left: calc(var(--cfp-size) / 2);
     border-left: var(--cfp-cone-half-width) solid transparent;
     border-right: var(--cfp-cone-half-width) solid transparent;
     border-bottom: var(--cfp-cone-length) solid rgba(242,166,90,.25);
@@ -287,6 +285,8 @@
     markersLayer.innerHTML = '';
     const preset = MARKER_SIZE_PRESETS[markerSize] || MARKER_SIZE_PRESETS.medium;
     const coneLengthPx = parseFloat(preset.coneLen);
+    const markerSizePx = parseFloat(preset.size);
+    const centerPx = markerSizePx / 2; // exact center of the marker, in pixels
     cameras.forEach(cam => {
       const el = document.createElement('div');
       el.className = 'cfp-marker' + (cam.id === selectedId ? ' selected' : '');
@@ -302,7 +302,7 @@
       const fov = cameraTypeFov(cam.camera_type_id);
       const halfWidthPx = coneLengthPx * Math.tan((fov / 2) * Math.PI / 180);
       el.innerHTML = `
-        <div class="cfp-cone" style="transform:rotate(${cam.direction_degrees}deg); border-bottom-color:${color}66;
+        <div class="cfp-cone" style="top:${centerPx}px; left:${centerPx}px; transform:rotate(${cam.direction_degrees}deg); border-bottom-color:${color}66;
           border-left-width:${halfWidthPx.toFixed(1)}px; border-right-width:${halfWidthPx.toFixed(1)}px;
           border-bottom-width:${coneLengthPx}px;"></div>
         <div class="cfp-ring ${ringClass}"></div>
