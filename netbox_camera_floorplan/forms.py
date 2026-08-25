@@ -10,7 +10,7 @@ from .models import CameraPlacement, CameraType, FloorPlan
 class CameraTypeForm(NetBoxModelForm):
     class Meta:
         model = CameraType
-        fields = ["name", "slug", "preset_icon", "icon_image", "color", "description", "tags"]
+        fields = ["name", "slug", "preset_icon", "icon_image", "color", "fov_degrees", "description", "tags"]
         widgets = {
             "color": forms.TextInput(attrs={"type": "color", "class": "form-control form-control-color"}),
         }

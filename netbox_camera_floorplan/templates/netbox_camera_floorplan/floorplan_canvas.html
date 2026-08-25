@@ -262,6 +262,11 @@
     return type ? type.name : 'Unset';
   }
 
+  function cameraTypeFov(typeId){
+    const type = cameraTypeById(typeId);
+    return (type && type.fov_degrees) ? type.fov_degrees : 90;
+  }
+
   function populateTypeSelect(selectEl, selectedTypeId){
     selectEl.innerHTML = cameraTypes.map(t =>
       `<option value="${t.id}" ${t.id === selectedTypeId ? 'selected' : ''}>${t.name}</option>`
@@ -280,6 +285,8 @@
 
   function renderMarkers(){
     markersLayer.innerHTML = '';
+    const preset = MARKER_SIZE_PRESETS[markerSize] || MARKER_SIZE_PRESETS.medium;
+    const coneLengthPx = parseFloat(preset.coneLen);
     cameras.forEach(cam => {
       const el = document.createElement('div');
       el.className = 'cfp-marker' + (cam.id === selectedId ? ' selected' : '');
@@ -287,8 +294,17 @@
       el.style.top = cam.y_pct + '%';
       const ringClass = cam.reachability === true ? 'ok' : (cam.reachability === false ? 'down' : '');
       const color = cameraTypeColor(cam.camera_type_id);
+      // Real field-of-view angle per camera type (Dome ~90°, Bullet ~80°,
+      // PTZ ~60° default, etc. — configurable per type). The CSS
+      // border-triangle trick needs a half-width in px, not degrees
+      // directly, so we derive it from the actual angle via trigonometry:
+      // half-width = length * tan(fov/2).
+      const fov = cameraTypeFov(cam.camera_type_id);
+      const halfWidthPx = coneLengthPx * Math.tan((fov / 2) * Math.PI / 180);
       el.innerHTML = `
-        <div class="cfp-cone" style="transform:rotate(${cam.direction_degrees}deg); border-bottom-color:${color}66;"></div>
+        <div class="cfp-cone" style="transform:rotate(${cam.direction_degrees}deg); border-bottom-color:${color}66;
+          border-left-width:${halfWidthPx.toFixed(1)}px; border-right-width:${halfWidthPx.toFixed(1)}px;
+          border-bottom-width:${coneLengthPx}px;"></div>
         <div class="cfp-ring ${ringClass}"></div>
         <div class="cfp-dot" style="border-color:${color};">${cameraIconHtml(cam.camera_type_id)}</div>
         <div class="cfp-tag">${markerLabelHtml(cam)}</div>

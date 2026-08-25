@@ -90,6 +90,18 @@ class CameraType(NetBoxModel):
         default="#f2a65a",
         help_text="Hex color used for the marker ring and direction cone (e.g. #f2a65a).",
     )
+    fov_degrees = models.PositiveSmallIntegerField(
+        default=90,
+        validators=[MinValueValidator(1), MaxValueValidator(180)],
+        help_text=(
+            "Horizontal field of view in degrees, used to draw the coverage "
+            "cone on the floor plan. Real-world fixed-lens cameras typically "
+            "run 90-120° for Dome and 70-110° for Bullet; PTZ varies hugely "
+            "with zoom (as narrow as ~5° zoomed in, ~55-90° zoomed out) — "
+            "60° is a reasonable default representing a moderately zoomed-out "
+            "view. Adjust per your actual hardware's spec sheet if known."
+        ),
+    )
     description = models.CharField(max_length=200, blank=True)
 
     class Meta:

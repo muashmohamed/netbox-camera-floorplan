@@ -117,6 +117,14 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
 - Restored the visual direction cone on map markers too, now scaling
   proportionally with the "Marker size" setting (Small/Medium/Large/XL)
   instead of a fixed pixel size.
+- **Camera Types now have a real field of view angle** (`fov_degrees`),
+  and the cone on the map is drawn with the actual correct angular
+  spread via trigonometry, instead of one fixed cone shape for every
+  camera. Defaults are based on real-world camera specs: Dome 90°,
+  Bullet 80°, PTZ 60° (PTZ varies hugely with zoom — 60° represents a
+  moderately zoomed-out view; adjust per your actual hardware if known).
+  Edit any Camera Type to change its FOV. **Requires a new migration**
+  — see below.
 
 ### A note on camera devices and racks
 

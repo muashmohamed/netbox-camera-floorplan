@@ -164,6 +164,7 @@ class FloorPlanCanvasView(PermissionRequiredMixin, View):
                 "name": ct.name,
                 "color": ct.color,
                 "icon_url": ct.get_icon_url(),
+                "fov_degrees": ct.fov_degrees,
             }
             for ct in CameraType.objects.all()
         ]

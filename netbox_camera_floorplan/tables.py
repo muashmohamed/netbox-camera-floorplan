@@ -13,8 +13,8 @@ class CameraTypeTable(NetBoxTable):
 
     class Meta(NetBoxTable.Meta):
         model = CameraType
-        fields = ("pk", "id", "name", "icon_preview", "swatch", "description", "tags")
-        default_columns = ("name", "icon_preview", "swatch", "description")
+        fields = ("pk", "id", "name", "icon_preview", "swatch", "fov_degrees", "description", "tags")
+        default_columns = ("name", "icon_preview", "swatch", "fov_degrees", "description")
 
     def render_icon_preview(self, record):
         icon_url = record.get_icon_url()
