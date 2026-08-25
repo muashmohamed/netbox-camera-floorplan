@@ -95,6 +95,11 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
 - A Floor Plan's display text (used in the Camera Placements table and
   any dropdown) now includes its Location when set — "Site / Location /
   Floor Plan Name" — instead of skipping straight from Site to name.
+- Fixed custom-uploaded camera type icons being invisible on the map
+  when the icon itself was dark-colored (e.g. a black outline icon on
+  the near-black marker background). Every icon now sits on a small
+  light circular backdrop, so any icon color stays visible regardless of
+  what was uploaded.
 
 ### A note on camera devices and racks
 
