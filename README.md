@@ -130,8 +130,16 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
   it's a deliberate choice made alongside picking the icon rather than a
   silent default you might not notice — still fully editable afterward.
 - Fixed the direction cone appearing to originate from a point near the
-  marker rather than exactly on it. Its anchor point is now computed
-  directly in pixels rather than via nested CSS `calc()`.
+  marker rather than exactly on it — **found the actual cause this
+  time**: the CSS border-triangle technique's visual apex is not the
+  same point as the box's own top-left corner (the left border eats
+  into the box, and there's no top border), so both the box's position
+  *and* its `transform-origin` needed to account for that offset. This
+  was verified with exact coordinate math before shipping, not just
+  visual inspection.
+- Camera labels (name/IP) on the floor plan are now hidden by default
+  and only show on hover, or for whichever marker is currently
+  selected — reduces visual clutter on dense floor plans.
 
 ### A note on camera devices and racks
 

@@ -119,7 +119,7 @@
     cursor:pointer;
   }
   .cfp-marker .cfp-cone {
-    position:absolute; width:0; height:0; transform-origin:0 0;
+    position:absolute; width:0; height:0;
     border-left: var(--cfp-cone-half-width) solid transparent;
     border-right: var(--cfp-cone-half-width) solid transparent;
     border-bottom: var(--cfp-cone-length) solid rgba(242,166,90,.25);
@@ -146,7 +146,9 @@
     position:absolute; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:var(--cfp-tag-font);
     top: calc(var(--cfp-size) + 3px);
     background:rgba(10,15,22,.85); color:#dbe6f0; padding:2px 6px; border-radius:3px; text-align:center;
+    display:none; z-index:5;
   }
+  .cfp-marker:hover .cfp-tag, .cfp-marker.selected .cfp-tag { display:block; }
   .cfp-marker .cfp-tag-ip { color:#9db4c7; font-size:calc(var(--cfp-tag-font) - 1px); }
   #cfp-device-results .list-group-item { cursor:pointer; font-size:.85rem; }
 </style>
@@ -301,8 +303,17 @@
       // half-width = length * tan(fov/2).
       const fov = cameraTypeFov(cam.camera_type_id);
       const halfWidthPx = coneLengthPx * Math.tan((fov / 2) * Math.PI / 180);
+      // The border-triangle trick's apex is NOT at the box's own top-left
+      // corner — the left border eats halfWidthPx into the box, and there's
+      // no top border, so the true apex sits at local (halfWidthPx, 0), not
+      // (0, 0). Left-shift the box by halfWidthPx to compensate, and set
+      // transform-origin to that same true-apex point so rotation pivots
+      // exactly on the marker's center regardless of angle or FOV width.
+      const coneLeftPx = centerPx - halfWidthPx;
       el.innerHTML = `
-        <div class="cfp-cone" style="top:${centerPx}px; left:${centerPx}px; transform:rotate(${cam.direction_degrees}deg); border-bottom-color:${color}66;
+        <div class="cfp-cone" style="top:${centerPx}px; left:${coneLeftPx.toFixed(1)}px;
+          transform-origin:${halfWidthPx.toFixed(1)}px 0px;
+          transform:rotate(${cam.direction_degrees}deg); border-bottom-color:${color}66;
           border-left-width:${halfWidthPx.toFixed(1)}px; border-right-width:${halfWidthPx.toFixed(1)}px;
           border-bottom-width:${coneLengthPx}px;"></div>
         <div class="cfp-ring ${ringClass}"></div>
