@@ -110,6 +110,10 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
 - Removed "Direction Degrees" from the Camera Placements list table too
   (it had been removed from the canvas details panel already, but was
   still showing up here).
+- Restored the "Direction" slider in the camera details panel and the
+  "Direction Degrees" column in the Camera Placements list — the visual
+  cone overlay on the map markers remains removed (that was a separate,
+  earlier decision).
 
 ### A note on camera devices and racks
 

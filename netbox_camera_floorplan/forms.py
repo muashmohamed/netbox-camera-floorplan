@@ -80,6 +80,7 @@ class CameraPlacementForm(NetBoxModelForm):
             "camera_type",
             "x_pct",
             "y_pct",
+            "direction_degrees",
             "power_source_override",
             "notes",
             "tags",

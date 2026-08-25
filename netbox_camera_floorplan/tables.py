@@ -60,7 +60,8 @@ class CameraPlacementTable(NetBoxTable):
             "device",
             "floorplan",
             "camera_type",
+            "direction_degrees",
             "power_source_override",
             "tags",
         )
-        default_columns = ("device", "floorplan", "camera_type", "power_source_override")
+        default_columns = ("device", "floorplan", "camera_type", "direction_degrees", "power_source_override")
