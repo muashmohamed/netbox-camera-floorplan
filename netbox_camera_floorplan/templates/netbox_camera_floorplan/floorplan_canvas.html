@@ -110,11 +110,21 @@
     --cfp-icon-size: 16px;
     --cfp-icon-pad: 3px;
     --cfp-tag-font: 10px;
+    --cfp-cone-length: 34px;
+    --cfp-cone-half-width: 9px;
   }
   .cfp-marker {
     position:absolute; width:var(--cfp-size); height:var(--cfp-size);
     margin: calc(var(--cfp-size) / -2) 0 0 calc(var(--cfp-size) / -2);
     cursor:pointer;
+  }
+  .cfp-marker .cfp-cone {
+    position:absolute; width:0; height:0; transform-origin:0 0;
+    top: calc(var(--cfp-size) / 2);
+    left: calc(var(--cfp-size) / 2);
+    border-left: var(--cfp-cone-half-width) solid transparent;
+    border-right: var(--cfp-cone-half-width) solid transparent;
+    border-bottom: var(--cfp-cone-length) solid rgba(242,166,90,.25);
   }
   .cfp-marker .cfp-dot {
     position:absolute; top:0; left:0; width:var(--cfp-size); height:var(--cfp-size); border-radius:50%;
@@ -155,10 +165,10 @@
 
   const MARKER_SIZE_KEY = 'netbox_camera_floorplan_marker_size';
   const MARKER_SIZE_PRESETS = {
-    small:  { size: '18px', ring: '22px', icon: '11px', pad: '2px', font: '8px'  },
-    medium: { size: '26px', ring: '32px', icon: '16px', pad: '3px', font: '10px' },
-    large:  { size: '36px', ring: '44px', icon: '22px', pad: '4px', font: '12px' },
-    xlarge: { size: '48px', ring: '58px', icon: '30px', pad: '5px', font: '14px' },
+    small:  { size: '18px', ring: '22px', icon: '11px', pad: '2px', font: '8px',  coneLen: '24px', coneHalf: '6px'  },
+    medium: { size: '26px', ring: '32px', icon: '16px', pad: '3px', font: '10px', coneLen: '34px', coneHalf: '9px'  },
+    large:  { size: '36px', ring: '44px', icon: '22px', pad: '4px', font: '12px', coneLen: '48px', coneHalf: '13px' },
+    xlarge: { size: '48px', ring: '58px', icon: '30px', pad: '5px', font: '14px', coneLen: '64px', coneHalf: '17px' },
   };
   let markerSize = localStorage.getItem(MARKER_SIZE_KEY) || 'medium';
 
@@ -170,6 +180,8 @@
     el.style.setProperty('--cfp-icon-size', preset.icon);
     el.style.setProperty('--cfp-icon-pad', preset.pad);
     el.style.setProperty('--cfp-tag-font', preset.font);
+    el.style.setProperty('--cfp-cone-length', preset.coneLen);
+    el.style.setProperty('--cfp-cone-half-width', preset.coneHalf);
   }
   let pendingClick = null;
   let selectedNewDeviceId = null;
@@ -276,6 +288,7 @@
       const ringClass = cam.reachability === true ? 'ok' : (cam.reachability === false ? 'down' : '');
       const color = cameraTypeColor(cam.camera_type_id);
       el.innerHTML = `
+        <div class="cfp-cone" style="transform:rotate(${cam.direction_degrees}deg); border-bottom-color:${color}66;"></div>
         <div class="cfp-ring ${ringClass}"></div>
         <div class="cfp-dot" style="border-color:${color};">${cameraIconHtml(cam.camera_type_id)}</div>
         <div class="cfp-tag">${markerLabelHtml(cam)}</div>

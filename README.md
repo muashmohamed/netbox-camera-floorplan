@@ -114,6 +114,9 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
   "Direction Degrees" column in the Camera Placements list — the visual
   cone overlay on the map markers remains removed (that was a separate,
   earlier decision).
+- Restored the visual direction cone on map markers too, now scaling
+  proportionally with the "Marker size" setting (Small/Medium/Large/XL)
+  instead of a fixed pixel size.
 
 ### A note on camera devices and racks
 
