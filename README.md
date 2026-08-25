@@ -92,6 +92,9 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
   has no Edit or Add entry point: a placement's x/y position can only be
   set meaningfully by clicking on the floor plan canvas, so this page is
   now view + delete only, as intended.
+- A Floor Plan's display text (used in the Camera Placements table and
+  any dropdown) now includes its Location when set — "Site / Location /
+  Floor Plan Name" — instead of skipping straight from Site to name.
 
 ### A note on camera devices and racks
 

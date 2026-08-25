@@ -43,6 +43,8 @@ class FloorPlan(NetBoxModel):
         ]
 
     def __str__(self):
+        if self.location:
+            return f"{self.site.name} / {self.location.name} / {self.name}"
         return f"{self.site.name} / {self.name}"
 
     def get_absolute_url(self):
@@ -185,8 +187,8 @@ class CameraPlacement(NetBoxModel):
         ordering = ["floorplan", "device"]
         constraints = [
             models.UniqueConstraint(
-                fields=["floorplan", "device"],
-                name="unique_device_per_floorplan",
+                fields=["device"],
+                name="unique_device_placement",
             )
         ]
 
