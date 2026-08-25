@@ -100,6 +100,9 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
   the near-black marker background). Every icon now sits on a small
   light circular backdrop, so any icon color stays visible regardless of
   what was uploaded.
+- Removed the "Direction" slider from the camera details panel (the
+  underlying field still exists in the database, just not shown or
+  editable anymore — no migration needed for this).
 
 ### A note on camera devices and racks
 

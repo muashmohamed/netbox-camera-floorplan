@@ -267,9 +267,6 @@
       </div>
       <div class="mb-2"><strong>Uplink</strong><br>${uplinkHtml}</div>
       <div class="mb-2"><strong>Power</strong><br>${powerHtml}</div>
-      <div class="mb-2"><strong>Direction</strong><br>
-        ${canEdit ? `<input type="range" min="0" max="359" value="${cam.direction_degrees}" id="cfp-direction" style="width:100%;">` : cam.direction_degrees + '°'}
-      </div>
       <div class="mb-2"><strong>Notes</strong><br>
         ${canEdit ? `<textarea id="cfp-notes" class="form-control form-control-sm">${cam.notes || ''}</textarea>` : (cam.notes || '<span class="text-muted">None</span>')}
       </div>
@@ -283,7 +280,6 @@
       populateTypeSelect(document.getElementById('cfp-type'), cam.camera_type_id);
 
       document.getElementById('cfp-save-btn').addEventListener('click', () => {
-        cam.direction_degrees = parseInt(document.getElementById('cfp-direction').value, 10) || 0;
         cam.notes = document.getElementById('cfp-notes').value;
         const typeVal = document.getElementById('cfp-type').value;
         cam.camera_type_id = typeVal ? parseInt(typeVal, 10) : null;
