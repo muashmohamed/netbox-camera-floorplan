@@ -86,6 +86,12 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
   `Decimal('34.567999999999998...')` with 40+ digits), which still fails
   the decimal-places check. Coordinates are now converted via a
   formatted string (`f"{value:.3f}"`) instead, which is exact.
+- Fixed a `NoReverseMatch` crash opening the Camera Placements list page
+  (same root cause as the earlier changelog fix — NetBox's table tried
+  to build an "Edit" link that doesn't exist). This list intentionally
+  has no Edit or Add entry point: a placement's x/y position can only be
+  set meaningfully by clicking on the floor plan canvas, so this page is
+  now view + delete only, as intended.
 
 ### A note on camera devices and racks
 

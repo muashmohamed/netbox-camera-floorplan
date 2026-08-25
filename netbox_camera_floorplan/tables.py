@@ -1,7 +1,7 @@
 import django_tables2 as tables
 from django.utils.html import format_html
 
-from netbox.tables import NetBoxTable
+from netbox.tables import ActionsColumn, NetBoxTable
 
 from .models import CameraPlacement, CameraType, FloorPlan
 
@@ -46,6 +46,11 @@ class FloorPlanTable(NetBoxTable):
 class CameraPlacementTable(NetBoxTable):
     device = tables.Column(linkify=True)
     floorplan = tables.Column(linkify=True)
+    # No "edit" action here on purpose — a placement's position (x/y) can
+    # only be set meaningfully by clicking on the floor plan canvas, not
+    # from a blind form. This list is for viewing/deleting only; to move
+    # a camera, open its floor plan and drag/re-click it there.
+    actions = ActionsColumn(actions=("delete",))
 
     class Meta(NetBoxTable.Meta):
         model = CameraPlacement
