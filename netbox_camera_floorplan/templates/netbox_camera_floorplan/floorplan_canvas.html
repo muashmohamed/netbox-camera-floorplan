@@ -349,7 +349,13 @@
       <div class="mb-2"><strong>Uplink</strong><br>${uplinkHtml}</div>
       <div class="mb-2"><strong>Power</strong><br>${powerHtml}</div>
       <div class="mb-2"><strong>Direction</strong><br>
-        ${canEdit ? `<input type="range" min="0" max="359" value="${cam.direction_degrees}" id="cfp-direction" style="width:100%;">` : cam.direction_degrees + '°'}
+        ${canEdit ? `
+          <div class="cfp-direction-dial" data-degrees="${cam.direction_degrees}" style="width:64px;height:64px;border-radius:50%;border:2px solid #ccc;position:relative;margin:6px auto;cursor:pointer;background:#fff;">
+            <div class="cfp-direction-needle" style="position:absolute;left:calc(50% - 1px);top:50%;width:2px;height:28px;background:#0d6efd;transform-origin:top center;transform:rotate(${cam.direction_degrees}deg);"></div>
+            <div style="position:absolute;top:50%;left:50%;width:6px;height:6px;background:#0d6efd;border-radius:50%;transform:translate(-50%,-50%);"></div>
+          </div>
+          <div class="text-center small text-muted cfp-direction-label">${cam.direction_degrees}°</div>
+        ` : cam.direction_degrees + '°'}
       </div>
       <div class="mb-2"><strong>Notes</strong><br>
         ${canEdit ? `<textarea id="cfp-notes" class="form-control form-control-sm">${cam.notes || ''}</textarea>` : (cam.notes || '<span class="text-muted">None</span>')}
@@ -364,7 +370,8 @@
       populateTypeSelect(document.getElementById('cfp-type'), cam.camera_type_id);
 
       document.getElementById('cfp-save-btn').addEventListener('click', () => {
-        cam.direction_degrees = parseInt(document.getElementById('cfp-direction').value, 10) || 0;
+        const dialEl = document.querySelector('#cfp-detail .cfp-direction-dial');
+        cam.direction_degrees = dialEl ? parseInt(dialEl.dataset.degrees, 10) || 0 : cam.direction_degrees;
         cam.notes = document.getElementById('cfp-notes').value;
         const typeVal = document.getElementById('cfp-type').value;
         cam.camera_type_id = typeVal ? parseInt(typeVal, 10) : null;
@@ -511,6 +518,43 @@
   }
 
   applyMarkerSize();
+  // Direction dial interaction — registered once at the top level (not
+  // inside renderDetail) using event delegation, so re-rendering the
+  // details panel never accumulates duplicate listeners.
+  function angleFromDialEvent(dialEl, evt){
+    const rect = dialEl.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = evt.clientX - cx;
+    const dy = evt.clientY - cy;
+    // atan2(dx, dy) measures the angle clockwise from "straight down" —
+    // matching the same convention the coverage cone's rotate() uses, so
+    // the dial and the cone always agree on what a given degree means.
+    let deg = Math.atan2(dx, dy) * 180 / Math.PI;
+    if(deg < 0) deg += 360;
+    return Math.round(deg);
+  }
+  function updateDialFromEvent(dialEl, evt){
+    const deg = angleFromDialEvent(dialEl, evt);
+    const needle = dialEl.querySelector('.cfp-direction-needle');
+    const label = dialEl.parentElement.querySelector('.cfp-direction-label');
+    if(needle) needle.style.transform = `rotate(${deg}deg)`;
+    if(label) label.textContent = deg + '°';
+    dialEl.dataset.degrees = deg;
+  }
+  let activeDirectionDial = null;
+  document.addEventListener('mousedown', (e) => {
+    const dial = e.target.closest('.cfp-direction-dial');
+    if(!dial) return;
+    activeDirectionDial = dial;
+    updateDialFromEvent(dial, e);
+  });
+  document.addEventListener('mousemove', (e) => {
+    if(!activeDirectionDial) return;
+    updateDialFromEvent(activeDirectionDial, e);
+  });
+  document.addEventListener('mouseup', () => { activeDirectionDial = null; });
+
   renderMarkers();
   renderDetail();
 })();

@@ -140,6 +140,11 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
 - Camera labels (name/IP) on the floor plan are now hidden by default
   and only show on hover, or for whichever marker is currently
   selected — reduces visual clutter on dense floor plans.
+- Replaced the numeric "Direction" slider with a small compass-style
+  dial — click or drag anywhere on the circle and a needle shows
+  exactly where the camera will point, using the same rotation
+  convention as the coverage cone on the map (so what you see in the
+  dial matches what actually renders).
 
 ### A note on camera devices and racks
 
