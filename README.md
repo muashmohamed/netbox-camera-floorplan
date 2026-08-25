@@ -107,6 +107,9 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
   above the floor plan, remembered per-browser like the label toggle —
   useful since a marker sized well for a small floor plan image can look
   tiny or huge on a much larger one.
+- Removed "Direction Degrees" from the Camera Placements list table too
+  (it had been removed from the canvas details panel already, but was
+  still showing up here).
 
 ### A note on camera devices and racks
 

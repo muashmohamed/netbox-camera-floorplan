@@ -1,6 +1,6 @@
 from django import forms
 
-from dcim.models import Device, Location, Site
+from dcim.models import Device, Location, Site, SiteGroup
 from netbox.forms import NetBoxModelFilterSetForm, NetBoxModelForm
 from utilities.forms.fields import DynamicModelChoiceField, DynamicModelMultipleChoiceField
 
@@ -34,17 +34,24 @@ class FloorPlanForm(NetBoxModelForm):
 
 class FloorPlanFilterForm(NetBoxModelFilterSetForm):
     """
-    Powers the filter panel on the Floor Plans list page. Site is treated
-    as the parent — picking one narrows the Location dropdown to just
-    that site's locations, mirroring how Sites and Locations relate to
-    each other everywhere else in NetBox.
+    Powers the filter panel on the Floor Plans list page, matching
+    NetBox's real hierarchy: a Site Group (e.g. "Viligli Powerhouse")
+    contains Sites (e.g. its transformers/office), and each Site
+    contains Locations (e.g. floors/rooms within that site's building).
+    Picking a Site Group narrows Site; picking a Site narrows Location.
     """
     model = FloorPlan
 
+    site_group_id = DynamicModelMultipleChoiceField(
+        queryset=SiteGroup.objects.all(),
+        required=False,
+        label="Site Group",
+    )
     site_id = DynamicModelMultipleChoiceField(
         queryset=Site.objects.all(),
         required=False,
         label="Site",
+        query_params={"group_id": "$site_group_id"},
     )
     location_id = DynamicModelMultipleChoiceField(
         queryset=Location.objects.all(),
@@ -73,7 +80,6 @@ class CameraPlacementForm(NetBoxModelForm):
             "camera_type",
             "x_pct",
             "y_pct",
-            "direction_degrees",
             "power_source_override",
             "notes",
             "tags",
