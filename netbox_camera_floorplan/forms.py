@@ -89,3 +89,37 @@ class CameraPlacementForm(NetBoxModelForm):
             "x_pct": forms.HiddenInput(),
             "y_pct": forms.HiddenInput(),
         }
+
+
+class CameraPlacementFilterForm(NetBoxModelFilterSetForm):
+    """
+    Powers the filter panel on the Camera Placements list page.
+    CameraPlacement doesn't have Site/Location fields of its own — these
+    reach through to whichever floor plan each placement belongs to, same
+    Site Group -> Site -> Location cascade as the Floor Plans list.
+    """
+    model = CameraPlacement
+
+    site_group_id = DynamicModelMultipleChoiceField(
+        queryset=SiteGroup.objects.all(),
+        required=False,
+        label="Site Group",
+    )
+    site_id = DynamicModelMultipleChoiceField(
+        queryset=Site.objects.all(),
+        required=False,
+        label="Site",
+        query_params={"group_id": "$site_group_id"},
+    )
+    location_id = DynamicModelMultipleChoiceField(
+        queryset=Location.objects.all(),
+        required=False,
+        label="Location",
+        query_params={"site_id": "$site_id"},
+    )
+    floorplan_id = DynamicModelMultipleChoiceField(
+        queryset=FloorPlan.objects.all(),
+        required=False,
+        label="Floor Plan",
+        query_params={"site_id": "$site_id", "location_id": "$location_id"},
+    )

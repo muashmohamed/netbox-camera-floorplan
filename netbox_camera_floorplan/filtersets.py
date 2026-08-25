@@ -1,7 +1,7 @@
 import django_filters
 from django.db.models import Q
 
-from dcim.models import Location, Site
+from dcim.models import Location, Site, SiteGroup
 from netbox.filtersets import NetBoxModelFilterSet
 
 from .models import CameraPlacement, CameraType, FloorPlan
@@ -22,8 +22,13 @@ class CameraTypeFilterSet(NetBoxModelFilterSet):
 
 class FloorPlanFilterSet(NetBoxModelFilterSet):
     # Explicit _id filters (NetBox's standard naming convention) so the
-    # Site -> Location cascading dropdowns in FloorPlanFilterForm bind to
-    # the right query parameters.
+    # Site Group -> Site -> Location cascading dropdowns in
+    # FloorPlanFilterForm bind to the right query parameters.
+    site_group_id = django_filters.ModelMultipleChoiceFilter(
+        field_name="site__group",
+        queryset=SiteGroup.objects.all(),
+        label="Site Group",
+    )
     site_id = django_filters.ModelMultipleChoiceFilter(
         field_name="site",
         queryset=Site.objects.all(),
@@ -49,6 +54,23 @@ class FloorPlanFilterSet(NetBoxModelFilterSet):
 
 class CameraPlacementFilterSet(NetBoxModelFilterSet):
     floorplan_id = django_filters.NumberFilter(field_name="floorplan_id")
+    # These reach through the floorplan relationship, since CameraPlacement
+    # doesn't have Site/Location fields of its own.
+    site_group_id = django_filters.ModelMultipleChoiceFilter(
+        field_name="floorplan__site__group",
+        queryset=SiteGroup.objects.all(),
+        label="Site Group",
+    )
+    site_id = django_filters.ModelMultipleChoiceFilter(
+        field_name="floorplan__site",
+        queryset=Site.objects.all(),
+        label="Site",
+    )
+    location_id = django_filters.ModelMultipleChoiceFilter(
+        field_name="floorplan__location",
+        queryset=Location.objects.all(),
+        label="Location",
+    )
 
     class Meta:
         model = CameraPlacement

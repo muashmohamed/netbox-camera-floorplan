@@ -145,6 +145,10 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
   exactly where the camera will point, using the same rotation
   convention as the coverage cone on the map (so what you see in the
   dial matches what actually renders).
+- Added the same Site Group → Site → Location cascading filter panel to
+  the Camera Placements list (reaching through each placement's floor
+  plan, since placements don't have Site/Location fields directly),
+  plus a Floor Plan filter that narrows along with the others.
 
 ### A note on camera devices and racks
 

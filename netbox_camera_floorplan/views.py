@@ -99,6 +99,7 @@ class CameraPlacementListView(generic.ObjectListView):
     queryset = CameraPlacement.objects.all()
     table = tables.CameraPlacementTable
     filterset = filtersets.CameraPlacementFilterSet
+    filterset_form = forms.CameraPlacementFilterForm
 
 
 class CameraPlacementDeleteView(generic.ObjectDeleteView):
