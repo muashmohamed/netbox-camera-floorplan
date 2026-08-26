@@ -239,6 +239,16 @@ categorized as AP/Switch/etc., edit them once to set the right category.
   "No data". Verified with a standalone logic trace-through covering
   all four states plus the priority ordering, not just written and
   assumed correct.
+- **Found and fixed a real bug in the above via actual testing**: the
+  Floor Plans list badge only ever showed ONE issue type (whichever
+  ranked highest — unreachable over no-IP), completely hiding a "no
+  IP" device from the summary whenever an "unreachable" device also
+  existed on the same floor plan. Now shows every applicable issue
+  side by side (e.g. "2 unreachable" AND "1 no IP" together, if both
+  apply), using `format_html_join` — actually tested with real Django
+  this time (installed Django in the sandbox specifically to run it),
+  confirming both the multi-badge case and the single-badge case
+  render correctly.
 
 ## v0.2.0 changes (this version)
 

@@ -1,5 +1,5 @@
 import django_tables2 as tables
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
 
 from netbox.tables import ActionsColumn, NetBoxTable
 
@@ -54,15 +54,20 @@ class FloorPlanTable(NetBoxTable):
         summary = record.get_reachability_summary()
         if summary["total"] == 0:
             return format_html('<span class="text-muted">{}</span>', "No devices")
+
+        # Show every issue that actually applies, not just the highest
+        # priority one — an earlier version only ever showed one badge,
+        # which silently hid a "no IP" device whenever an "unreachable"
+        # device also existed on the same floor plan.
+        issues = []
         if summary["unreachable"] > 0:
-            return format_html(
-                '<span class="badge text-bg-red">{} unreachable</span>',
-                summary["unreachable"],
-            )
+            issues.append(("red", f"{summary['unreachable']} unreachable"))
         if summary["no_ip"] > 0:
-            return format_html(
-                '<span class="badge text-bg-orange">{} no IP</span>',
-                summary["no_ip"],
+            issues.append(("orange", f"{summary['no_ip']} no IP"))
+
+        if issues:
+            return format_html_join(
+                " ", '<span class="badge text-bg-{}">{}</span>', issues
             )
         if summary["reachable"] == summary["total"]:
             return format_html('<span class="badge text-bg-green">{}</span>', "All reachable")
