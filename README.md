@@ -82,6 +82,15 @@ categorized as AP/Switch/etc., edit them once to set the right category.
   existing click-to-select behavior on markers — same end result, one
   extra click.) The marker being moved pulses so it's clear which one
   is active, and the cursor changes to a crosshair while in this mode.
+- Made the default sort order for both Device Placements and Floor
+  Plans fully explicit (Site name → Location name → Floor Plan name →
+  Device name), so rows from the same site/location naturally cluster
+  together even without applying a filter. Combined with the existing
+  Site Group → Site → Location → Floor Plan filter panel (for focusing
+  on exactly one group), this should make managing many floor plans
+  noticeably less messy. This is sort-based grouping, not a fully
+  collapsible grouped view with group headers — that would be a
+  meaningfully bigger feature if it turns out to be needed later.
 
 ## v0.2.0 changes (this version)
 

@@ -34,7 +34,7 @@ class FloorPlan(NetBoxModel):
     comments = models.TextField(blank=True)
 
     class Meta:
-        ordering = ["site", "location", "name"]
+        ordering = ["site__name", "location__name", "name"]
         verbose_name = "Device Floor Plan"
         verbose_name_plural = "Device Floor Plans"
         constraints = [
@@ -254,7 +254,7 @@ class CameraPlacement(NetBoxModel):
     notes = models.TextField(blank=True)
 
     class Meta:
-        ordering = ["floorplan", "device"]
+        ordering = ["floorplan__site__name", "floorplan__location__name", "floorplan__name", "device__name"]
         verbose_name = "Device Placement"
         verbose_name_plural = "Device Placements"
         constraints = [
