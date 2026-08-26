@@ -249,6 +249,10 @@ categorized as AP/Switch/etc., edit them once to set the right category.
   this time (installed Django in the sandbox specifically to run it),
   confirming both the multi-badge case and the single-badge case
   render correctly.
+- Added six more built-in Device Type presets/icons/categories:
+  **Server**, **Router**, **Firewall**, **NVR**, **ONT**, **Modem** —
+  each with its own icon and auto-category-suggestion when picked,
+  same pattern as the original set.
 
 ## v0.2.0 changes (this version)
 

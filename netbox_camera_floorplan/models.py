@@ -93,6 +93,12 @@ class CameraType(NetBoxModel):
     CATEGORY_ACCESS_CONTROL = "access_control"
     CATEGORY_SWITCH = "switch"
     CATEGORY_UPS = "ups"
+    CATEGORY_SERVER = "server"
+    CATEGORY_ROUTER = "router"
+    CATEGORY_FIREWALL = "firewall"
+    CATEGORY_NVR = "nvr"
+    CATEGORY_ONT = "ont"
+    CATEGORY_MODEM = "modem"
     CATEGORY_OTHER = "other"
     CATEGORY_CHOICES = [
         (CATEGORY_CAMERA, "Camera"),
@@ -100,6 +106,12 @@ class CameraType(NetBoxModel):
         (CATEGORY_ACCESS_CONTROL, "Access Control"),
         (CATEGORY_SWITCH, "Switch"),
         (CATEGORY_UPS, "UPS"),
+        (CATEGORY_SERVER, "Server"),
+        (CATEGORY_ROUTER, "Router"),
+        (CATEGORY_FIREWALL, "Firewall"),
+        (CATEGORY_NVR, "NVR"),
+        (CATEGORY_ONT, "ONT"),
+        (CATEGORY_MODEM, "Modem"),
         (CATEGORY_OTHER, "Other"),
     ]
 
@@ -111,6 +123,12 @@ class CameraType(NetBoxModel):
     PRESET_ACCESS_CONTROL = "access_control"
     PRESET_SWITCH = "switch"
     PRESET_UPS = "ups"
+    PRESET_SERVER = "server"
+    PRESET_ROUTER = "router"
+    PRESET_FIREWALL = "firewall"
+    PRESET_NVR = "nvr"
+    PRESET_ONT = "ont"
+    PRESET_MODEM = "modem"
     PRESET_GENERIC = "generic"
     PRESET_CHOICES = [
         ("", "None (use color swatch only)"),
@@ -122,6 +140,12 @@ class CameraType(NetBoxModel):
         (PRESET_ACCESS_CONTROL, "Access Control (built-in)"),
         (PRESET_SWITCH, "Switch (built-in)"),
         (PRESET_UPS, "UPS (built-in)"),
+        (PRESET_SERVER, "Server (built-in)"),
+        (PRESET_ROUTER, "Router (built-in)"),
+        (PRESET_FIREWALL, "Firewall (built-in)"),
+        (PRESET_NVR, "NVR (built-in)"),
+        (PRESET_ONT, "ONT (built-in)"),
+        (PRESET_MODEM, "Modem (built-in)"),
         (PRESET_GENERIC, "Generic device (built-in)"),
     ]
 
