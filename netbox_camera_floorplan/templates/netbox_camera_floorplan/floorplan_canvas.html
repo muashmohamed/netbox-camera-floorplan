@@ -301,7 +301,7 @@
     menu.classList.remove('open'); // always start closed, regardless of prior state
     pickerEl.dataset.value = selectedTypeId != null ? String(selectedTypeId) : '';
     if(!cameraTypes.length){
-      display.textContent = 'No placement types defined yet';
+      display.textContent = 'No device types defined yet';
       menu.innerHTML = '';
       return;
     }

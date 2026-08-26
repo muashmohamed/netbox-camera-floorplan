@@ -59,6 +59,18 @@ category "Camera" automatically — nothing needs manual fixing for them.
 If you'd already created any generic/other types that should now be
 categorized as AP/Switch/etc., edit them once to set the right category.
 
+### Follow-up fixes to v0.3.0
+
+- Renamed "Placement Types" to **"Device Types"** throughout (nav menu,
+  page titles, error messages, model verbose names).
+- Fixed the Field of View field not actually hiding for non-camera
+  categories — the previous attempt guessed at NetBox's field-wrapper
+  CSS class, which didn't match. Now hides the input and its label
+  directly instead, which is unambiguous regardless of markup.
+- Added a **Category** column to the Device Types list table, so the
+  category is visible without opening each item — it wasn't shown
+  anywhere in the list before.
+
 ## v0.2.0 changes (this version)
 
 - **Camera Types are now a real, manageable NetBox model.** Go to

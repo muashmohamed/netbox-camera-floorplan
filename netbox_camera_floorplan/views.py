@@ -40,7 +40,7 @@ class CameraTypeEditView(generic.ObjectEditView):
         except IntegrityError:
             messages.error(
                 request,
-                "A placement type with that name (or slug) already exists. "
+                "A device type with that name (or slug) already exists. "
                 "This usually happens from double-clicking Create/Save — "
                 "please check the list before adding it again.",
             )

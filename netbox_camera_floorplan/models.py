@@ -55,9 +55,9 @@ class FloorPlan(NetBoxModel):
 
 class CameraType(NetBoxModel):
     """
-    A manageable placement type (e.g. Dome, PTZ, Bullet, Fisheye, AP,
+    A manageable device type (e.g. Dome, PTZ, Bullet, Fisheye, AP,
     Switch...) with its own icon, marker color, and category. Displayed
-    in the UI as "Placement Type" — kept as CameraType internally since
+    in the UI as "Device Type" — kept as CameraType internally since
     this plugin started camera-only, and NetBox core already has its own
     unrelated DeviceType model (hardware/rack specs) that this must not
     be confused with.
@@ -156,8 +156,8 @@ class CameraType(NetBoxModel):
 
     class Meta:
         ordering = ["name"]
-        verbose_name = "Placement Type"
-        verbose_name_plural = "Placement Types"
+        verbose_name = "Device Type"
+        verbose_name_plural = "Device Types"
 
     @property
     def is_camera(self):

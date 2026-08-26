@@ -24,24 +24,23 @@ document.addEventListener('DOMContentLoaded', function() {
   var fovInput = document.getElementById('id_fov_degrees');
   var categorySelect = document.getElementById('id_category');
 
-  function fovFieldRow(){
-    if(!fovInput) return null;
-    return fovInput.closest('.mb-3, .form-group, .field, .row') || fovInput.parentElement;
-  }
-
-  function fovLabelRow(){
-    var label = document.querySelector('label[for="id_fov_degrees"]');
-    if(!label) return null;
-    return label.closest('.mb-3, .form-group, .field, .row');
-  }
-
   function toggleFovVisibility(){
     if(!categorySelect || !fovInput) return;
     var isCamera = categorySelect.value === 'camera';
-    var row = fovFieldRow();
-    if(row) row.style.display = isCamera ? '' : 'none';
-    var labelRow = fovLabelRow();
-    if(labelRow && labelRow !== row) labelRow.style.display = isCamera ? '' : 'none';
+    var display = isCamera ? '' : 'none';
+    // Hide the input itself directly rather than guessing at NetBox's
+    // field-wrapper class (uncertain and proved unreliable) — this part
+    // is unambiguous regardless of surrounding markup.
+    fovInput.style.display = display;
+    var label = document.querySelector('label[for="id_fov_degrees"]');
+    if(label) label.style.display = display;
+    // NetBox typically renders help text as a small/form-text element
+    // right after the input, inside the same wrapper — hide that too.
+    if(fovInput.parentElement){
+      fovInput.parentElement.querySelectorAll('.form-text, small').forEach(function(el){
+        el.style.display = display;
+      });
+    }
   }
 
   if(presetSelect){
@@ -60,6 +59,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   if(categorySelect){
     categorySelect.addEventListener('change', toggleFovVisibility);
+    categorySelect.addEventListener('input', toggleFovVisibility);
     toggleFovVisibility(); // reflect the correct state immediately, including when editing an existing type
   }
 });

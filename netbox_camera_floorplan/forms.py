@@ -70,7 +70,7 @@ class CameraPlacementForm(NetBoxModelForm):
         queryset=CameraType.objects.all(),
         required=False,
         label="Device type",
-        help_text="Placement type — manage these under Plugins → Placement Types.",
+        help_text="Placement type — manage these under Plugins → Device Types.",
     )
 
     class Meta:

@@ -8,13 +8,17 @@ from .models import CameraPlacement, CameraType, FloorPlan
 
 class CameraTypeTable(NetBoxTable):
     name = tables.Column(linkify=True)
+    category = tables.Column()
     icon_preview = tables.Column(empty_values=(), orderable=False, verbose_name="Icon")
     swatch = tables.Column(empty_values=(), orderable=False, verbose_name="Color", accessor="color")
 
     class Meta(NetBoxTable.Meta):
         model = CameraType
-        fields = ("pk", "id", "name", "icon_preview", "swatch", "fov_degrees", "description", "tags")
-        default_columns = ("name", "icon_preview", "swatch", "fov_degrees", "description")
+        fields = ("pk", "id", "name", "category", "icon_preview", "swatch", "fov_degrees", "description", "tags")
+        default_columns = ("name", "category", "icon_preview", "swatch", "fov_degrees", "description")
+
+    def render_category(self, value, record):
+        return record.get_category_display()
 
     def render_icon_preview(self, record):
         icon_url = record.get_icon_url()

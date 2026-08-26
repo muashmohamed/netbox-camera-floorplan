@@ -10,7 +10,7 @@ from .models import CameraPlacement, CameraType, FloorPlan
 class CameraTypeFilterSet(NetBoxModelFilterSet):
     class Meta:
         model = CameraType
-        fields = ("id", "name", "slug")
+        fields = ("id", "name", "slug", "category")
 
     def search(self, queryset, name, value):
         if not value.strip():

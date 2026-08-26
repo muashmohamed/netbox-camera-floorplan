@@ -3,11 +3,11 @@ from netbox.plugins import PluginMenuButton, PluginMenuItem
 menu_items = (
     PluginMenuItem(
         link="plugins:netbox_camera_floorplan:cameratype_list",
-        link_text="Placement Types",
+        link_text="Device Types",
         buttons=(
             PluginMenuButton(
                 link="plugins:netbox_camera_floorplan:cameratype_add",
-                title="Add Placement Type",
+                title="Add Device Type",
                 icon_class="mdi mdi-plus-thick",
             ),
         ),
