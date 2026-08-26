@@ -124,6 +124,9 @@
     border-right: var(--cfp-cone-half-width) solid transparent;
     border-bottom: var(--cfp-cone-length) solid rgba(242,166,90,.25);
   }
+  .cfp-marker .cfp-cone-circle {
+    position:absolute; border-radius:50%; border:1px dashed;
+  }
   .cfp-marker .cfp-dot {
     position:absolute; top:0; left:0; width:var(--cfp-size); height:var(--cfp-size); border-radius:50%;
     background:#0a0f16; display:flex; align-items:center; justify-content:center; font-size:13px;
@@ -297,25 +300,41 @@
       const ringClass = cam.reachability === true ? 'ok' : (cam.reachability === false ? 'down' : '');
       const color = cameraTypeColor(cam.camera_type_id);
       // Real field-of-view angle per camera type (Dome ~90°, Bullet ~80°,
-      // PTZ ~60° default, etc. — configurable per type). The CSS
-      // border-triangle trick needs a half-width in px, not degrees
-      // directly, so we derive it from the actual angle via trigonometry:
-      // half-width = length * tan(fov/2).
+      // PTZ ~60° default, Fisheye ~180-360°, etc. — configurable per type).
       const fov = cameraTypeFov(cam.camera_type_id);
-      const halfWidthPx = coneLengthPx * Math.tan((fov / 2) * Math.PI / 180);
-      // The border-triangle trick's apex is NOT at the box's own top-left
-      // corner — the left border eats halfWidthPx into the box, and there's
-      // no top border, so the true apex sits at local (halfWidthPx, 0), not
-      // (0, 0). Left-shift the box by halfWidthPx to compensate, and set
-      // transform-origin to that same true-apex point so rotation pivots
-      // exactly on the marker's center regardless of angle or FOV width.
-      const coneLeftPx = centerPx - halfWidthPx;
-      el.innerHTML = `
-        <div class="cfp-cone" style="top:${centerPx}px; left:${coneLeftPx.toFixed(1)}px;
+
+      let coneHtml;
+      if(fov >= 170){
+        // A triangle can't represent this — tan(fov/2) blows up toward
+        // 180° and is meaningless beyond it. Fisheye/panoramic coverage
+        // is drawn as a full circle around the marker instead, since
+        // direction stops being meaningful at this point too.
+        const radius = coneLengthPx;
+        coneHtml = `<div class="cfp-cone-circle" style="
+          width:${radius * 2}px; height:${radius * 2}px;
+          top:${(centerPx - radius).toFixed(1)}px; left:${(centerPx - radius).toFixed(1)}px;
+          background:${color}22; border-color:${color}66;"></div>`;
+      } else {
+        // The CSS border-triangle trick needs a half-width in px, not
+        // degrees directly, so we derive it from the actual angle via
+        // trigonometry: half-width = length * tan(fov/2).
+        const halfWidthPx = coneLengthPx * Math.tan((fov / 2) * Math.PI / 180);
+        // The triangle's apex is NOT at the box's own top-left corner —
+        // the left border eats halfWidthPx into the box, and there's no
+        // top border, so the true apex sits at local (halfWidthPx, 0), not
+        // (0, 0). Left-shift the box by halfWidthPx to compensate, and set
+        // transform-origin to that same true-apex point so rotation
+        // pivots exactly on the marker's center regardless of angle.
+        const coneLeftPx = centerPx - halfWidthPx;
+        coneHtml = `<div class="cfp-cone" style="top:${centerPx}px; left:${coneLeftPx.toFixed(1)}px;
           transform-origin:${halfWidthPx.toFixed(1)}px 0px;
           transform:rotate(${cam.direction_degrees}deg); border-bottom-color:${color}66;
           border-left-width:${halfWidthPx.toFixed(1)}px; border-right-width:${halfWidthPx.toFixed(1)}px;
-          border-bottom-width:${coneLengthPx}px;"></div>
+          border-bottom-width:${coneLengthPx}px;"></div>`;
+      }
+
+      el.innerHTML = `
+        ${coneHtml}
         <div class="cfp-ring ${ringClass}"></div>
         <div class="cfp-dot" style="border-color:${color};">${cameraIconHtml(cam.camera_type_id)}</div>
         <div class="cfp-tag">${markerLabelHtml(cam)}</div>

@@ -149,6 +149,14 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
   the Camera Placements list (reaching through each placement's floor
   plan, since placements don't have Site/Location fields directly),
   plus a Floor Plan filter that narrows along with the others.
+- Added **Fisheye** as a fifth built-in camera type preset (panoramic
+  ceiling-mount cameras, commonly 180° hemispherical up to 360° full
+  panoramic). Raised the FOV field's max from 180° to 360° to allow
+  this. Since a triangle cone mathematically breaks down as the angle
+  approaches 180° (the underlying trig blows up toward infinity), any
+  FOV of 170° or more now renders as a full circle around the marker
+  instead of a triangle, which is also a more honest representation of
+  omnidirectional coverage anyway.
 
 ### A note on camera devices and racks
 

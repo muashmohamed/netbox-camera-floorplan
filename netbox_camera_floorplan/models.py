@@ -62,12 +62,14 @@ class CameraType(NetBoxModel):
     PRESET_DOME = "dome"
     PRESET_PTZ = "ptz"
     PRESET_BULLET = "bullet"
+    PRESET_FISHEYE = "fisheye"
     PRESET_GENERIC = "generic"
     PRESET_CHOICES = [
         ("", "None (use color swatch only)"),
         (PRESET_DOME, "Dome (built-in)"),
         (PRESET_PTZ, "PTZ (built-in)"),
         (PRESET_BULLET, "Bullet (built-in)"),
+        (PRESET_FISHEYE, "Fisheye (built-in)"),
         (PRESET_GENERIC, "Generic camera (built-in)"),
     ]
 
@@ -92,14 +94,18 @@ class CameraType(NetBoxModel):
     )
     fov_degrees = models.PositiveSmallIntegerField(
         default=90,
-        validators=[MinValueValidator(1), MaxValueValidator(180)],
+        validators=[MinValueValidator(1), MaxValueValidator(360)],
         help_text=(
             "Horizontal field of view in degrees, used to draw the coverage "
             "cone on the floor plan. Real-world fixed-lens cameras typically "
             "run 90-120° for Dome and 70-110° for Bullet; PTZ varies hugely "
             "with zoom (as narrow as ~5° zoomed in, ~55-90° zoomed out) — "
             "60° is a reasonable default representing a moderately zoomed-out "
-            "view. Adjust per your actual hardware's spec sheet if known."
+            "view. Fisheye cameras are commonly 180° (hemispherical) up to "
+            "360° (full panoramic) — values of 170° or more render as a full "
+            "circle around the marker instead of a triangle, since a cone "
+            "shape can't represent that much coverage. Adjust per your "
+            "actual hardware's spec sheet if known."
         ),
     )
     description = models.CharField(max_length=200, blank=True)
