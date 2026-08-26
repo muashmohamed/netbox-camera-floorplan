@@ -97,9 +97,20 @@ categorized as AP/Switch/etc., edit them once to set the right category.
   live DOM that **NetBox 4.6 renders this table via HTMX**
   (`hx-target`/`hx-swap="outerHTML"`), swapping the actual rows in
   after the initial page load rather than having them present at
-  `DOMContentLoaded`. The grouping script now re-runs on HTMX's own
-  `htmx:afterSwap`/`htmx:afterSettle` events (idempotently, so repeated
-  swaps never duplicate headers), instead of running once too early.
+  `DOMContentLoaded`. Attempted fix: re-run the grouping script on
+  HTMX's own `htmx:afterSwap`/`htmx:afterSettle` events.
+- **That attempted fix still didn't work either** — inspecting the
+  actual raw page source (View Page Source) proved the injected
+  `<script>` never made it into the rendered HTML at all. The
+  `{% block content %}` override on `generic/object_list.html` was
+  guessing at an internal NetBox template block name that turned out to
+  be wrong. Replaced this approach entirely with NetBox's own
+  documented `PluginTemplateExtension` API (`list_buttons()` hook,
+  registered via a new `template_content.py`) — this is NetBox's
+  supported mechanism for exactly this kind of page injection, and
+  doesn't depend on guessing undocumented internals. The actual
+  generated JavaScript was extracted and validated with Node this time
+  (not just Python-compiled), rather than assumed correct.
 
 ## v0.2.0 changes (this version)
 
