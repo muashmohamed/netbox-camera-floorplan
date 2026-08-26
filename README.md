@@ -70,6 +70,11 @@ categorized as AP/Switch/etc., edit them once to set the right category.
 - Added a **Category** column to the Device Types list table, so the
   category is visible without opening each item — it wasn't shown
   anywhere in the list before.
+- Removed the dark background fill next to the floor plan image (it
+  now blends with the page instead of showing a stark black area).
+- Clicking an already-selected marker now deselects it (toggle),
+  instead of it staying permanently selected until you pick a
+  different one.
 
 ## v0.2.0 changes (this version)
 

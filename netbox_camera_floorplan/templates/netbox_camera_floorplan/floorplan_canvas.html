@@ -29,7 +29,7 @@
         <option value="xlarge">Extra Large</option>
       </select>
     </div>
-    <div id="cfp-stage-wrap" style="position:relative; border:1px solid var(--tblr-border-color); overflow:auto; background:#0a0f16;">
+    <div id="cfp-stage-wrap" style="position:relative; border:1px solid var(--tblr-border-color); overflow:auto; background:transparent;">
       <div id="cfp-stage" style="position:relative; display:inline-block;">
         <img id="cfp-floor-img" src="{{ floorplan.image.url }}" style="display:block; max-width:none;">
         <div id="cfp-markers"></div>
@@ -414,7 +414,12 @@
         <div class="cfp-dot" style="border-color:${color};">${cameraIconHtml(cam.camera_type_id)}</div>
         <div class="cfp-tag">${markerLabelHtml(cam)}</div>
       `;
-      el.addEventListener('click', (e) => { e.stopPropagation(); selectedId = cam.id; renderMarkers(); renderDetail(); });
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectedId = (selectedId === cam.id) ? null : cam.id;
+        renderMarkers();
+        renderDetail();
+      });
       markersLayer.appendChild(el);
     });
   }
