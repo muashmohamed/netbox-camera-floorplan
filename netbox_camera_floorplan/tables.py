@@ -20,7 +20,7 @@ class CameraTypeTable(NetBoxTable):
         icon_url = record.get_icon_url()
         if icon_url:
             return format_html('<img src="{}" style="width:24px;height:24px;object-fit:contain;">', icon_url)
-        return format_html('<span class="text-muted">—</span>')
+        return format_html('<span class="text-muted">{}</span>', '—')
 
     def render_swatch(self, value):
         return format_html(

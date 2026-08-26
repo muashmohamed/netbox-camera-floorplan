@@ -157,6 +157,12 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
   FOV of 170° or more now renders as a full circle around the marker
   instead of a triangle, which is also a more honest representation of
   omnidirectional coverage anyway.
+- Fixed a `500 TypeError: args or kwargs must be provided` crash on the
+  Camera Types list page — a latent bug present since the very first
+  version of this table, only exposed once a camera type was created
+  with no icon at all (no preset, no upload). Django's `format_html()`
+  requires at least one argument to interpolate; the empty-state branch
+  was calling it with none.
 
 ### A note on camera devices and racks
 
