@@ -321,9 +321,10 @@ class DeviceSearchView(LoginRequiredMixin, View):
 
     def get(self, request):
         query = request.GET.get("q", "").strip()
-        if len(query) < 2:
-            return JsonResponse({"results": []})
-
+        # No minimum length here on purpose — an empty query still runs
+        # (name__icontains="" matches everything), so focusing the device
+        # search box shows a full/default list sorted by relevance to
+        # this floor plan, before the user types anything to narrow it.
         devices = Device.objects.filter(name__icontains=query).select_related("site", "location")
 
         floorplan_id = request.GET.get("floorplan_id")
