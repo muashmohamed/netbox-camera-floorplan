@@ -176,6 +176,16 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
   element's contents via JavaScript. Both JS-managed dropdowns now use
   plain custom styling instead of that shared class, so no page-wide
   script can interfere with them.
+- **Found the actual root cause of the above, confirmed via DevTools
+  Elements inspection**: NetBox auto-enhances every `<select>` on the
+  page with Tom Select (a JS combobox library), converting it into its
+  own separate rendered widget the moment it appears — regardless of
+  CSS class. When we later injected real `<option>` elements into the
+  now-hidden native select, Tom Select's own UI had no way of knowing
+  to refresh, since it had already built a disconnected copy of its own
+  at page load. Fixed properly this time by replacing both dropdowns
+  with a small custom-built picker widget (plain `<div>`s, not a
+  `<select>` at all), which nothing can auto-enhance out from under us.
 
 ### A note on camera devices and racks
 

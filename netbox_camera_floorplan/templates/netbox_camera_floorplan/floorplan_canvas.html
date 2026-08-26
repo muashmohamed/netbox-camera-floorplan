@@ -73,7 +73,10 @@
         </div>
         <div class="mb-3">
           <label class="form-label">Camera type</label>
-          <select id="cfp-new-type" class="cfp-plain-select" style="width:100%; padding:6px 10px; border:1px solid #ced4da; border-radius:6px; background:#fff;"></select>
+          <div class="cfp-ctp" id="cfp-new-type-picker" data-value="">
+            <div class="cfp-ctp-display" tabindex="0">Select a camera type…</div>
+            <div class="cfp-ctp-menu"></div>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
@@ -154,8 +157,20 @@
   .cfp-marker:hover .cfp-tag, .cfp-marker.selected .cfp-tag { display:block; }
   .cfp-marker .cfp-tag-ip { color:#9db4c7; font-size:calc(var(--cfp-tag-font) - 1px); }
   #cfp-device-results .list-group-item { cursor:pointer; font-size:.85rem; }
-  .cfp-plain-select { color:#212529; -webkit-appearance:menulist; appearance:menulist; }
-  .cfp-plain-select option { color:#212529; background:#fff; }
+  .cfp-ctp { position:relative; }
+  .cfp-ctp-display {
+    width:100%; padding:6px 10px; border:1px solid #ced4da; border-radius:6px;
+    background:#fff; color:#212529; cursor:pointer; user-select:none;
+  }
+  .cfp-ctp-display::after { content:"▾"; float:right; color:#6c757d; }
+  .cfp-ctp-menu {
+    display:none; position:absolute; top:100%; left:0; right:0; z-index:20;
+    max-height:180px; overflow-y:auto; background:#fff; border:1px solid #ced4da;
+    border-radius:6px; margin-top:2px; box-shadow:0 2px 8px rgba(0,0,0,.15);
+  }
+  .cfp-ctp-menu.open { display:block; }
+  .cfp-ctp-option { padding:6px 10px; cursor:pointer; color:#212529; }
+  .cfp-ctp-option:hover { background:#f2a65a33; }
 </style>
 
 <script>
@@ -272,11 +287,50 @@
     return (type && type.fov_degrees) ? type.fov_degrees : 90;
   }
 
-  function populateTypeSelect(selectEl, selectedTypeId){
-    selectEl.innerHTML = cameraTypes.map(t =>
-      `<option value="${t.id}" ${t.id === selectedTypeId ? 'selected' : ''}>${t.name}</option>`
-    ).join('') || '<option value="">No camera types defined yet</option>';
+  function populateTypePicker(pickerEl, selectedTypeId){
+    const display = pickerEl.querySelector('.cfp-ctp-display');
+    const menu = pickerEl.querySelector('.cfp-ctp-menu');
+    pickerEl.dataset.value = selectedTypeId != null ? String(selectedTypeId) : '';
+    if(!cameraTypes.length){
+      display.textContent = 'No camera types defined yet';
+      menu.innerHTML = '';
+      return;
+    }
+    const selected = cameraTypes.find(t => t.id === selectedTypeId);
+    display.textContent = selected ? selected.name : 'Select a camera type…';
+    menu.innerHTML = cameraTypes.map(t =>
+      `<div class="cfp-ctp-option" data-id="${t.id}">${t.name}</div>`
+    ).join('');
   }
+
+  function getTypePickerValue(pickerEl){
+    return pickerEl.dataset.value || '';
+  }
+
+  // Single set of delegated listeners handles every picker on the page,
+  // open or closed, current or future — avoids re-binding on every
+  // renderDetail() call and needs no native <select> (which NetBox's
+  // own Tom Select script auto-hijacks into a disconnected widget the
+  // moment one appears in the DOM, regardless of class).
+  document.addEventListener('click', (e) => {
+    const display = e.target.closest('.cfp-ctp-display');
+    if(display){
+      const menu = display.parentElement.querySelector('.cfp-ctp-menu');
+      const isOpen = menu.classList.contains('open');
+      document.querySelectorAll('.cfp-ctp-menu.open').forEach(m => m.classList.remove('open'));
+      if(!isOpen) menu.classList.add('open');
+      return;
+    }
+    const option = e.target.closest('.cfp-ctp-option');
+    if(option){
+      const picker = option.closest('.cfp-ctp');
+      picker.dataset.value = option.dataset.id;
+      picker.querySelector('.cfp-ctp-display').textContent = option.textContent;
+      picker.querySelector('.cfp-ctp-menu').classList.remove('open');
+      return;
+    }
+    document.querySelectorAll('.cfp-ctp-menu.open').forEach(m => m.classList.remove('open'));
+  });
 
   function markerLabelHtml(cam){
     const nameLine = cam.device_name;
@@ -365,7 +419,10 @@
       <h5><a href="${cam.device_url}">${cam.device_name}</a></h5>
       ${cam.ip_address ? `<div class="text-muted small mb-2">${cam.ip_address}</div>` : ''}
       <div class="mb-2"><strong>Camera type</strong><br>
-        ${canEdit ? `<select id="cfp-type" class="cfp-plain-select" style="width:100%; padding:4px 8px; font-size:.875rem; border:1px solid #ced4da; border-radius:6px; background:#fff;"></select>` : cameraTypeName(cam.camera_type_id)}
+        ${canEdit ? `<div class="cfp-ctp" id="cfp-type-picker" data-value="">
+          <div class="cfp-ctp-display" tabindex="0">Select a camera type…</div>
+          <div class="cfp-ctp-menu"></div>
+        </div>` : cameraTypeName(cam.camera_type_id)}
       </div>
       <div class="mb-2"><strong>Uplink</strong><br>${uplinkHtml}</div>
       <div class="mb-2"><strong>Power</strong><br>${powerHtml}</div>
@@ -388,13 +445,13 @@
     `;
 
     if(canEdit){
-      populateTypeSelect(document.getElementById('cfp-type'), cam.camera_type_id);
+      populateTypePicker(document.getElementById('cfp-type-picker'), cam.camera_type_id);
 
       document.getElementById('cfp-save-btn').addEventListener('click', () => {
         const dialEl = document.querySelector('#cfp-detail .cfp-direction-dial');
         cam.direction_degrees = dialEl ? parseInt(dialEl.dataset.degrees, 10) || 0 : cam.direction_degrees;
         cam.notes = document.getElementById('cfp-notes').value;
-        const typeVal = document.getElementById('cfp-type').value;
+        const typeVal = getTypePickerValue(document.getElementById('cfp-type-picker'));
         cam.camera_type_id = typeVal ? parseInt(typeVal, 10) : null;
         savePlacement(cam);
       });
@@ -488,7 +545,7 @@
   if(confirmAddBtn){
     confirmAddBtn.addEventListener('click', () => {
       if(!selectedNewDeviceId || !pendingClick) return;
-      const typeVal = document.getElementById('cfp-new-type').value;
+      const typeVal = getTypePickerValue(document.getElementById('cfp-new-type-picker'));
       const cameraTypeId = typeVal ? parseInt(typeVal, 10) : null;
       fetch(`/plugins/camera-floorplan/floorplans/${floorplanId}/save-camera/`, {
         method: 'POST',
@@ -521,7 +578,7 @@
       resultsBox.innerHTML = '';
       selectedLabel.textContent = '';
       confirmAddBtn.disabled = true;
-      populateTypeSelect(document.getElementById('cfp-new-type'), null);
+      populateTypePicker(document.getElementById('cfp-new-type-picker'), null);
       getBsModal(document.getElementById('cfp-add-modal')).show();
       searchDevices(''); // show a default browse list right away, no typing required
     });
