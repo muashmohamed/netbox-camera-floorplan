@@ -38,6 +38,20 @@ class FloorPlanForm(NetBoxModelForm):
     image = forms.FileField(
         help_text="Upload an image (PNG/JPG) or a PDF — a PDF's first page is automatically converted to an image.",
     )
+    pdf_page = forms.IntegerField(
+        required=False,
+        min_value=1,
+        initial=1,
+        label="PDF page number",
+        help_text=(
+            "Only used if you uploaded a PDF. Each floor plan here represents "
+            "one specific Site/Location, but a real architectural PDF export "
+            "often has multiple pages (ground floor, first floor, electrical "
+            "layout, etc.) — set which page is THIS floor plan, so only that "
+            "one page gets imported, not the whole document. Defaults to "
+            "page 1. Ignored for a plain image upload."
+        ),
+    )
 
     class Meta:
         model = FloorPlan
@@ -77,12 +91,29 @@ class FloorPlanForm(NetBoxModelForm):
                 "dependencies and rebuild."
             )
 
+        # Read the page number directly from raw submitted data rather
+        # than self.cleaned_data['pdf_page'] — Django doesn't guarantee
+        # that field has finished its own cleaning before this method
+        # runs, since per-field clean order follows declaration order,
+        # and relying on that would be fragile.
+        raw_page = self.data.get("pdf_page") or "1"
+        try:
+            page_num = int(raw_page)
+            if page_num < 1:
+                raise ValueError
+        except (TypeError, ValueError):
+            raise forms.ValidationError("PDF page number must be a positive whole number.")
+
         pdf_bytes = uploaded.read()
         try:
             doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
             if doc.page_count == 0:
                 raise forms.ValidationError("This PDF has no pages.")
-            page = doc.load_page(0)
+            if page_num > doc.page_count:
+                raise forms.ValidationError(
+                    f"This PDF only has {doc.page_count} page(s) — page {page_num} doesn't exist."
+                )
+            page = doc.load_page(page_num - 1)  # PyMuPDF pages are 0-indexed
             # 150 DPI is a reasonable balance of clarity vs file size for
             # a floor plan drawing (72 DPI is a PDF's "native" unit).
             zoom = 150 / 72

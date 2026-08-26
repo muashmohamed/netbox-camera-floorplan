@@ -139,6 +139,17 @@ categorized as AP/Switch/etc., edit them once to set the right category.
   (no good open-source DWG reader exists; the existing "export from
   your CAD tool" workflow already produces better results than any
   open-source DWG renderer would).
+- Added a **PDF page number** field alongside the upload, since a real
+  architectural PDF export is usually multi-page (ground floor, first
+  floor, electrical layout, etc.) — this lets you pick exactly which
+  page corresponds to the specific Site/Location this floor plan
+  represents, instead of always importing page 1 regardless of which
+  floor you're actually creating. Out-of-range page numbers show a
+  clear error naming the PDF's actual page count. Tested against a
+  real 3-page PDF: confirmed page 1 and page 2 genuinely produce
+  different image content (not just different byte sizes), and
+  visually verified the extracted image for "page 2" actually shows
+  the page-2 content, not page 1 or 3.
 
 ## v0.2.0 changes (this version)
 
