@@ -125,6 +125,20 @@ categorized as AP/Switch/etc., edit them once to set the right category.
   dependencies, no CDN scripts, no server-side changes. Hides the
   editing controls and details panel for the printed output, leaving
   just the floor plan and its markers at full page width.
+- Added **PDF import for Floor Plans**. Uploading a PDF now
+  automatically converts its first page to a PNG (at 150 DPI) and
+  stores that as the floor plan image, instead of rejecting the
+  upload outright. Uses `PyMuPDF` (pip-installable, no separate system
+  binary needed — unlike most PDF tools), added as a plugin dependency.
+  **This was actually tested end-to-end** with a real generated PDF —
+  not just written and assumed to work — confirming a genuinely valid,
+  correctly-sized PNG comes out the other end, and that a normal
+  PNG/JPG upload and an invalid/garbage file are both still handled
+  correctly (accepted and rejected respectively). DWG import was
+  considered and **not** built — see the conversation for the reasoning
+  (no good open-source DWG reader exists; the existing "export from
+  your CAD tool" workflow already produces better results than any
+  open-source DWG renderer would).
 
 ## v0.2.0 changes (this version)
 

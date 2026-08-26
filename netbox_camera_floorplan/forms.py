@@ -1,4 +1,8 @@
+from io import BytesIO
+
 from django import forms
+from django.core.files.uploadedfile import InMemoryUploadedFile
+from PIL import Image
 
 from dcim.models import Device, Location, Site, SiteGroup
 from netbox.forms import NetBoxModelFilterSetForm, NetBoxModelForm
@@ -26,10 +30,78 @@ class FloorPlanForm(NetBoxModelForm):
         required=False,
         query_params={"site_id": "$site"},
     )
+    # Overrides the ModelForm's auto-generated forms.ImageField, which
+    # would reject a PDF outright (via its own built-in PIL validation)
+    # before clean_image() below ever got a chance to intercept it and
+    # convert it. A plain FileField lets both image and PDF uploads
+    # through to our own validation/conversion logic.
+    image = forms.FileField(
+        help_text="Upload an image (PNG/JPG) or a PDF — a PDF's first page is automatically converted to an image.",
+    )
 
     class Meta:
         model = FloorPlan
         fields = ["name", "site", "location", "image", "comments", "tags"]
+
+    def clean_image(self):
+        uploaded = self.cleaned_data.get("image")
+        if not uploaded:
+            return uploaded
+
+        uploaded.seek(0)
+        header = uploaded.read(5)
+        uploaded.seek(0)
+        is_pdf = getattr(uploaded, "content_type", "") == "application/pdf" or header == b"%PDF-"
+
+        if not is_pdf:
+            # Not a PDF — still verify it's a genuine image (this is the
+            # same check forms.ImageField would have done for us before
+            # we overrode the field above), since a plain FileField
+            # otherwise wouldn't catch a bogus non-image upload here.
+            try:
+                Image.open(uploaded).verify()
+            except Exception:
+                raise forms.ValidationError(
+                    "Upload a valid image (PNG/JPG) or a PDF — this file doesn't appear to be either."
+                )
+            uploaded.seek(0)
+            return uploaded
+
+        try:
+            import pymupdf
+        except ImportError:
+            raise forms.ValidationError(
+                "PDF upload support requires the PyMuPDF package, which isn't installed on "
+                "this server yet. Please export the PDF's first page as a PNG/JPG and upload "
+                "that instead, or ask your administrator to add PyMuPDF to the plugin's "
+                "dependencies and rebuild."
+            )
+
+        pdf_bytes = uploaded.read()
+        try:
+            doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+            if doc.page_count == 0:
+                raise forms.ValidationError("This PDF has no pages.")
+            page = doc.load_page(0)
+            # 150 DPI is a reasonable balance of clarity vs file size for
+            # a floor plan drawing (72 DPI is a PDF's "native" unit).
+            zoom = 150 / 72
+            pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom))
+            png_bytes = pix.tobytes("png")
+        except forms.ValidationError:
+            raise
+        except Exception as exc:
+            raise forms.ValidationError(f"Could not convert this PDF to an image: {exc}")
+
+        base_name = uploaded.name.rsplit(".", 1)[0] if "." in uploaded.name else uploaded.name
+        return InMemoryUploadedFile(
+            BytesIO(png_bytes),
+            field_name="image",
+            name=f"{base_name}.png",
+            content_type="image/png",
+            size=len(png_bytes),
+            charset=None,
+        )
 
 
 class FloorPlanFilterForm(NetBoxModelFilterSetForm):
