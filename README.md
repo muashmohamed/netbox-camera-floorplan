@@ -75,6 +75,13 @@ categorized as AP/Switch/etc., edit them once to set the right category.
 - Clicking an already-selected marker now deselects it (toggle),
   instead of it staying permanently selected until you pick a
   different one.
+- Added a **"Move location"** button to the details panel — click it,
+  then click anywhere on the floor plan to drop the marker there, then
+  hit Save to persist the new position. (Implemented as click-to-drop
+  rather than literal press-and-drag, to avoid conflicting with the
+  existing click-to-select behavior on markers — same end result, one
+  extra click.) The marker being moved pulses so it's clear which one
+  is active, and the cursor changes to a crosshair while in this mode.
 
 ## v0.2.0 changes (this version)
 

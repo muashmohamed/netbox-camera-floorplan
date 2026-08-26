@@ -136,6 +136,12 @@
     border:2px solid #f2a65a;
   }
   .cfp-marker.selected .cfp-dot { border-color:#fff; box-shadow:0 0 0 3px rgba(242,166,90,.4); }
+  .cfp-marker.moving .cfp-dot { animation: cfp-pulse 1s ease-in-out infinite; }
+  @keyframes cfp-pulse {
+    0%, 100% { box-shadow:0 0 0 0 rgba(13,110,253,.6); }
+    50% { box-shadow:0 0 0 6px rgba(13,110,253,0); }
+  }
+  #cfp-stage.cfp-moving-mode { cursor:crosshair; }
   .cfp-marker .cfp-dot img {
     width:var(--cfp-icon-size); height:var(--cfp-icon-size); object-fit:contain;
     background:#f4f6f8; border-radius:50%; padding:var(--cfp-icon-pad); box-sizing:content-box;
@@ -180,6 +186,7 @@
   let cameras = {{ cameras_json|safe }};
   const cameraTypes = {{ camera_types_json|safe }}; // [{id, name, color, icon_url}, ...]
   let selectedId = null;
+  let movingCameraId = null;
   const LABEL_MODE_KEY = 'netbox_camera_floorplan_label_mode';
   let labelMode = localStorage.getItem(LABEL_MODE_KEY) || 'both';
 
@@ -360,13 +367,16 @@
 
   function renderMarkers(){
     markersLayer.innerHTML = '';
+    stage.classList.toggle('cfp-moving-mode', movingCameraId != null);
     const preset = MARKER_SIZE_PRESETS[markerSize] || MARKER_SIZE_PRESETS.medium;
     const coneLengthPx = parseFloat(preset.coneLen);
     const markerSizePx = parseFloat(preset.size);
     const centerPx = markerSizePx / 2; // exact center of the marker, in pixels
     cameras.forEach(cam => {
       const el = document.createElement('div');
-      el.className = 'cfp-marker' + (cam.id === selectedId ? ' selected' : '');
+      el.className = 'cfp-marker'
+        + (cam.id === selectedId ? ' selected' : '')
+        + (cam.id === movingCameraId ? ' moving' : '');
       el.style.left = cam.x_pct + '%';
       el.style.top = cam.y_pct + '%';
       const ringClass = cam.reachability === true ? 'ok' : (cam.reachability === false ? 'down' : '');
@@ -465,6 +475,9 @@
       </div>
       ${canEdit ? `
         <button class="btn btn-sm btn-primary w-100 mb-1" id="cfp-save-btn">Save</button>
+        <button class="btn btn-sm btn-outline-secondary w-100 mb-1" id="cfp-move-btn">
+          ${movingCameraId === cam.id ? 'Click the floor plan to drop it here' : 'Move location'}
+        </button>
         <button class="btn btn-sm btn-outline-danger w-100" id="cfp-delete-btn">Delete marker</button>
       ` : ''}
     `;
@@ -479,6 +492,11 @@
         const typeVal = getTypePickerValue(document.getElementById('cfp-type-picker'));
         cam.camera_type_id = typeVal ? parseInt(typeVal, 10) : null;
         savePlacement(cam);
+      });
+      document.getElementById('cfp-move-btn').addEventListener('click', () => {
+        movingCameraId = (movingCameraId === cam.id) ? null : cam.id;
+        renderMarkers();
+        renderDetail();
       });
       document.getElementById('cfp-delete-btn').addEventListener('click', () => {
         getBsModal(document.getElementById('cfp-delete-modal')).show();
@@ -594,10 +612,22 @@
       const rect = img.getBoundingClientRect();
       const x = ((e.clientX - rect.left) / rect.width) * 100;
       const y = ((e.clientY - rect.top) / rect.height) * 100;
-      pendingClick = {
-        x_pct: Math.round(Math.max(0, Math.min(100, x)) * 1000) / 1000,
-        y_pct: Math.round(Math.max(0, Math.min(100, y)) * 1000) / 1000,
-      };
+      const xPct = Math.round(Math.max(0, Math.min(100, x)) * 1000) / 1000;
+      const yPct = Math.round(Math.max(0, Math.min(100, y)) * 1000) / 1000;
+
+      if(movingCameraId != null){
+        const cam = cameras.find(c => c.id === movingCameraId);
+        if(cam){
+          cam.x_pct = xPct;
+          cam.y_pct = yPct;
+        }
+        movingCameraId = null;
+        renderMarkers();
+        renderDetail();
+        return;
+      }
+
+      pendingClick = { x_pct: xPct, y_pct: yPct };
       selectedNewDeviceId = null;
       searchInput.value = '';
       resultsBox.innerHTML = '';
