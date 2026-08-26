@@ -166,6 +166,16 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
 - The "place a camera" modal now shows a default list of nearby devices
   immediately when it opens, instead of requiring you to type at least
   2 characters first before seeing anything.
+- Fixed the device results list staying visible/overlapping after
+  moving on to the Camera type field — it now hides once you click
+  elsewhere, and reappears if you click back into the search box.
+- Fixed the Camera type dropdown appearing visually empty despite
+  having real options (confirmed via DevTools that the data was always
+  correct) — the likely cause was NetBox's own global select-styling
+  script conflicting with directly rewriting a `.form-select`
+  element's contents via JavaScript. Both JS-managed dropdowns now use
+  plain custom styling instead of that shared class, so no page-wide
+  script can interfere with them.
 
 ### A note on camera devices and racks
 

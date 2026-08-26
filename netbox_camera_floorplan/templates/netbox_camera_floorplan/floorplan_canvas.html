@@ -73,7 +73,7 @@
         </div>
         <div class="mb-3">
           <label class="form-label">Camera type</label>
-          <select id="cfp-new-type" class="form-select"></select>
+          <select id="cfp-new-type" class="cfp-plain-select" style="width:100%; padding:6px 10px; border:1px solid #ced4da; border-radius:6px; background:#fff;"></select>
         </div>
       </div>
       <div class="modal-footer">
@@ -154,6 +154,8 @@
   .cfp-marker:hover .cfp-tag, .cfp-marker.selected .cfp-tag { display:block; }
   .cfp-marker .cfp-tag-ip { color:#9db4c7; font-size:calc(var(--cfp-tag-font) - 1px); }
   #cfp-device-results .list-group-item { cursor:pointer; font-size:.85rem; }
+  .cfp-plain-select { color:#212529; -webkit-appearance:menulist; appearance:menulist; }
+  .cfp-plain-select option { color:#212529; background:#fff; }
 </style>
 
 <script>
@@ -363,7 +365,7 @@
       <h5><a href="${cam.device_url}">${cam.device_name}</a></h5>
       ${cam.ip_address ? `<div class="text-muted small mb-2">${cam.ip_address}</div>` : ''}
       <div class="mb-2"><strong>Camera type</strong><br>
-        ${canEdit ? `<select id="cfp-type" class="form-select form-select-sm"></select>` : cameraTypeName(cam.camera_type_id)}
+        ${canEdit ? `<select id="cfp-type" class="cfp-plain-select" style="width:100%; padding:4px 8px; font-size:.875rem; border:1px solid #ced4da; border-radius:6px; background:#fff;"></select>` : cameraTypeName(cam.camera_type_id)}
       </div>
       <div class="mb-2"><strong>Uplink</strong><br>${uplinkHtml}</div>
       <div class="mb-2"><strong>Power</strong><br>${powerHtml}</div>
@@ -472,7 +474,16 @@
       clearTimeout(searchDebounce);
       searchDebounce = setTimeout(() => searchDevices(e.target.value), 250);
     });
+    searchInput.addEventListener('focus', () => searchDevices(searchInput.value));
   }
+
+  // Hide the device results dropdown once the user moves on to another
+  // field (e.g. Camera type) instead of leaving it visible/overlapping.
+  document.addEventListener('click', (e) => {
+    if(!e.target.closest('#cfp-device-search') && !e.target.closest('#cfp-device-results')){
+      resultsBox.innerHTML = '';
+    }
+  });
 
   if(confirmAddBtn){
     confirmAddBtn.addEventListener('click', () => {
