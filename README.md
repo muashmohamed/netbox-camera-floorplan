@@ -119,6 +119,12 @@ categorized as AP/Switch/etc., edit them once to set the right category.
   custom picker widget as Device Type (not a native `<select>`, for the
   same Tom Select reason as before), and wired it into the save
   request.
+- Added an **"Export to PDF"** button to the floor plan canvas. Uses
+  the browser's own Print → Save as PDF (via `window.print()` + print
+  CSS), rather than adding a PDF-generation library — no new
+  dependencies, no CDN scripts, no server-side changes. Hides the
+  editing controls and details panel for the printed output, leaving
+  just the floor plan and its markers at full page width.
 
 ## v0.2.0 changes (this version)
 

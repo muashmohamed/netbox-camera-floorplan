@@ -28,6 +28,9 @@
         <option value="large">Large</option>
         <option value="xlarge">Extra Large</option>
       </select>
+      <button type="button" id="cfp-export-pdf-btn" class="btn btn-sm btn-outline-secondary ms-auto d-print-none">
+        <i class="mdi mdi-file-pdf-box"></i> Export to PDF
+      </button>
     </div>
     <div id="cfp-stage-wrap" style="position:relative; border:1px solid var(--tblr-border-color); overflow:auto; background:transparent;">
       <div id="cfp-stage" style="position:relative; display:inline-block;">
@@ -36,12 +39,12 @@
       </div>
     </div>
     {% if can_edit %}
-      <p class="text-muted mt-2 small">Click anywhere on the image to place a device. Click an existing marker to edit or move it.</p>
+      <p class="text-muted mt-2 small d-print-none">Click anywhere on the image to place a device. Click an existing marker to edit or move it.</p>
     {% endif %}
-    <div id="cfp-error-banner" class="alert alert-danger mt-2" style="display:none;"></div>
+    <div id="cfp-error-banner" class="alert alert-danger mt-2 d-print-none" style="display:none;"></div>
   </div>
 
-  <div class="col-md-3">
+  <div class="col-md-3 d-print-none">
     <div class="card">
       <div class="card-header">Device details</div>
       <div class="card-body" id="cfp-detail">
@@ -177,6 +180,16 @@
   .cfp-ctp-menu.open { display:block; }
   .cfp-ctp-option { padding:6px 10px; cursor:pointer; color:#212529; }
   .cfp-ctp-option:hover { background:#f2a65a33; }
+
+  @media print {
+    /* Give the floor plan the full page width instead of the normal
+       9-column layout, since the details panel is hidden for print. */
+    .col-md-9 { width:100% !important; max-width:100% !important; flex:0 0 100% !important; }
+    /* Remove the scrollable/height-clipped viewport so the entire
+       image prints, instead of only whatever fit in the on-screen box. */
+    #cfp-stage-wrap { overflow:visible !important; max-height:none !important; border:none !important; }
+    #cfp-floor-img { max-width:100% !important; }
+  }
 </style>
 
 <script>
@@ -689,6 +702,21 @@
   }
 
   applyMarkerSize();
+
+  const exportPdfBtn = document.getElementById('cfp-export-pdf-btn');
+  if(exportPdfBtn){
+    exportPdfBtn.addEventListener('click', () => {
+      // Deselect any marker first so the print-hidden details panel
+      // doesn't leave a "selected" marker highlighted oddly in the
+      // printed output, and close any open picker menus.
+      selectedId = null;
+      movingCameraId = null;
+      renderMarkers();
+      renderDetail();
+      window.print();
+    });
+  }
+
   // Direction dial interaction — registered once at the top level (not
   // inside renderDetail) using event delegation, so re-rendering the
   // details panel never accumulates duplicate listeners.
