@@ -1,22 +1,24 @@
 {% extends 'generic/object_list.html' %}
-{% block title %}Device Floor Plans{% endblock %}
+{% block title %}Device Placements{% endblock %}
 
 {% block content %}
 {{ block.super }}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-  // Same collapsible Site grouping as the Device Placements list, but
-  // here "Site" is its own dedicated column rather than embedded text.
+  // Adds collapsible Site-based group headers on top of the existing
+  // table, purely as a client-side visual layer — it doesn't touch how
+  // NetBox renders the table, so sorting, pagination, bulk select, and
+  // CSV export all keep working exactly as before.
   var table = document.querySelector('.card table, table.table');
   if(!table) return;
   var tbody = table.querySelector('tbody');
   if(!tbody) return;
 
   var headerCells = Array.from(table.querySelectorAll('thead th'));
-  var siteColIndex = headerCells.findIndex(function(th){
-    return th.textContent.trim().toLowerCase() === 'site';
+  var floorplanColIndex = headerCells.findIndex(function(th){
+    return th.textContent.trim().toLowerCase().indexOf('floorplan') !== -1;
   });
-  if(siteColIndex === -1) return;
+  if(floorplanColIndex === -1) return;
 
   var dataRows = Array.from(tbody.querySelectorAll('tr'));
   if(!dataRows.length) return;
@@ -26,8 +28,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
   dataRows.forEach(function(row){
     var cells = row.querySelectorAll('td');
-    if(!cells[siteColIndex]) return;
-    var siteName = cells[siteColIndex].textContent.trim();
+    if(!cells[floorplanColIndex]) return;
+    // The Floorplan column renders as "Site / Location / Floor Plan Name"
+    var siteName = cells[floorplanColIndex].textContent.trim().split('/')[0].trim();
     if(!siteName) return;
 
     if(siteName !== currentSite){
@@ -62,4 +65,3 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 {% endblock %}
-

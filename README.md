@@ -85,12 +85,14 @@ categorized as AP/Switch/etc., edit them once to set the right category.
 - Made the default sort order for both Device Placements and Floor
   Plans fully explicit (Site name → Location name → Floor Plan name →
   Device name), so rows from the same site/location naturally cluster
-  together even without applying a filter. Combined with the existing
-  Site Group → Site → Location → Floor Plan filter panel (for focusing
-  on exactly one group), this should make managing many floor plans
-  noticeably less messy. This is sort-based grouping, not a fully
-  collapsible grouped view with group headers — that would be a
-  meaningfully bigger feature if it turns out to be needed later.
+  together even without applying a filter.
+- Added real **collapsible grouping by Site** to both the Device
+  Placements and Device Floor Plans lists — a clickable header row
+  appears whenever the Site changes, and clicking it collapses/expands
+  everything under that site. Implemented as a client-side layer on top
+  of the existing table rather than replacing how NetBox renders it, so
+  sorting, pagination, bulk select, and CSV export all keep working
+  exactly as before.
 
 ## v0.2.0 changes (this version)
 
