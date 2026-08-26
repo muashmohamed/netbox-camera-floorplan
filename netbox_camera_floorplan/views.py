@@ -40,7 +40,7 @@ class CameraTypeEditView(generic.ObjectEditView):
         except IntegrityError:
             messages.error(
                 request,
-                "A camera type with that name (or slug) already exists. "
+                "A placement type with that name (or slug) already exists. "
                 "This usually happens from double-clicking Create/Save — "
                 "please check the list before adding it again.",
             )
@@ -166,6 +166,8 @@ class FloorPlanCanvasView(PermissionRequiredMixin, View):
                 "color": ct.color,
                 "icon_url": ct.get_icon_url(),
                 "fov_degrees": ct.fov_degrees,
+                "category": ct.category,
+                "is_camera": ct.is_camera,
             }
             for ct in CameraType.objects.all()
         ]
@@ -256,13 +258,13 @@ class CameraPlacementSaveView(PermissionRequiredMixin, View):
                     where = "another floor plan (its marker may have just been removed — please try again)"
                 return JsonResponse(
                     {"error": f"{device.name} is already placed on {where}. "
-                              f"A camera can only be pinned to one location — "
+                              f"A device can only be pinned to one location — "
                               f"delete that marker first if you want to move it here."},
                     status=409,
                 )
 
             detail = "; ".join(exc.messages) if isinstance(exc, ValidationError) else str(exc)
-            return JsonResponse({"error": f"Could not save this camera: {detail}"}, status=400)
+            return JsonResponse({"error": f"Could not save this device: {detail}"}, status=400)
 
         if placement_id:
             placement = get_object_or_404(CameraPlacement, pk=placement_id, floorplan=floorplan)

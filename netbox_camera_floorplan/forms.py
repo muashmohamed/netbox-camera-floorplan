@@ -10,7 +10,7 @@ from .models import CameraPlacement, CameraType, FloorPlan
 class CameraTypeForm(NetBoxModelForm):
     class Meta:
         model = CameraType
-        fields = ["name", "slug", "preset_icon", "icon_image", "color", "fov_degrees", "description", "tags"]
+        fields = ["name", "slug", "category", "preset_icon", "icon_image", "color", "fov_degrees", "description", "tags"]
         widgets = {
             "color": forms.TextInput(attrs={"type": "color", "class": "form-control form-control-color"}),
         }
@@ -64,12 +64,13 @@ class FloorPlanFilterForm(NetBoxModelFilterSetForm):
 class CameraPlacementForm(NetBoxModelForm):
     device = DynamicModelChoiceField(
         queryset=Device.objects.all(),
-        help_text="Select the existing NetBox device for this camera.",
+        help_text="Select the existing NetBox device being placed.",
     )
     camera_type = DynamicModelChoiceField(
         queryset=CameraType.objects.all(),
         required=False,
-        help_text="Physical camera type — manage these under Plugins → Camera Types.",
+        label="Device type",
+        help_text="Placement type — manage these under Plugins → Placement Types.",
     )
 
     class Meta:

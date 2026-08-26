@@ -34,7 +34,7 @@ class FloorPlanTable(NetBoxTable):
     site = tables.Column(linkify=True)
     location = tables.Column(linkify=True)
     camera_count = tables.Column(
-        accessor="cameras__count", verbose_name="Cameras", orderable=False
+        accessor="cameras__count", verbose_name="Devices", orderable=False
     )
 
     class Meta(NetBoxTable.Meta):

@@ -1,8 +1,63 @@
-# NetBox Camera Floor Plan Plugin
+# NetBox Device Floor Plan Plugin
 
-Place CCTV cameras on floor plan images inside NetBox, and view each
-camera's real uplink switch/port and power connection — pulled live from
-NetBox's own cable and power port data, never duplicated or hand-entered.
+Place devices — cameras, access points, access control panels, switches,
+UPS units — on floor plan images inside NetBox, and view each device's
+real uplink switch/port and power connection — pulled live from NetBox's
+own cable and power port data, never duplicated or hand-entered.
+
+(Internally the plugin package and its models are still named
+`netbox_camera_floorplan` / `CameraType` / `CameraPlacement` — this
+started as a camera-only tool, and a full technical rename wasn't worth
+the migration risk for what is purely a display change. Every
+user-facing label says "device"/"placement" now; see the v0.3.0 section
+below.)
+
+## v0.3.0 — Device Floor Plans (generalized beyond cameras)
+
+This plugin no longer only supports cameras — it now covers any device
+you'd want to pin to a floor plan: Access Points, Access Control panels,
+Switches, UPS units, or Cameras.
+
+**This is a display-only rename**, not a full technical one: the
+underlying model/app names (`CameraType`, `CameraPlacement`,
+`netbox_camera_floorplan`) are unchanged internally, since NetBox core
+already has its own unrelated `DeviceType` model and renaming a live
+Django app is meaningfully riskier than it's worth here. Every
+user-facing label has changed instead:
+
+- **Nav menu**: "Camera Types" → **Placement Types**, "Camera Floor
+  Plans" → **Device Floor Plans**, "Camera Placements" → **Device
+  Placements**
+- Page titles, modal titles, buttons, and form labels throughout now
+  say "device"/"placement" instead of "camera"
+
+**What's new:**
+- Placement Types now have a **category** field: Camera, Access Point,
+  Access Control, Switch, UPS, or Other
+- Four new built-in icon presets: **Access Point**, **Access Control**,
+  **Switch**, **UPS** (alongside the existing Dome/Bullet/PTZ/Fisheye)
+- **Direction and Field of View are now Camera-only.** The direction
+  dial and the coverage cone/circle on the map only show for
+  camera-category types — an AP, switch, access control panel, or UPS
+  doesn't have a "field of view," so those controls simply don't appear
+  for them, both when adding a Placement Type and when editing a
+  placement on the canvas (updates live if you change a placement's
+  type before saving, no need to reopen the panel)
+- Picking a preset icon now also auto-suggests the matching category
+  (e.g. picking the AP icon sets category to Access Point automatically)
+- **Requires a new migration** for the `category` field — see below
+
+### Upgrading from v0.2.x
+
+```bash
+python manage.py makemigrations netbox_camera_floorplan
+python manage.py migrate
+```
+
+Existing Camera Types (Dome, Bullet, PTZ, Fisheye, etc.) all default to
+category "Camera" automatically — nothing needs manual fixing for them.
+If you'd already created any generic/other types that should now be
+categorized as AP/Switch/etc., edit them once to set the right category.
 
 ## v0.2.0 changes (this version)
 

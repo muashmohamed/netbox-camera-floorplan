@@ -35,6 +35,8 @@ class FloorPlan(NetBoxModel):
 
     class Meta:
         ordering = ["site", "location", "name"]
+        verbose_name = "Device Floor Plan"
+        verbose_name_plural = "Device Floor Plans"
         constraints = [
             models.UniqueConstraint(
                 fields=["site", "location", "name"],
@@ -53,28 +55,68 @@ class FloorPlan(NetBoxModel):
 
 class CameraType(NetBoxModel):
     """
-    A manageable camera type (e.g. Dome, PTZ, Bullet, Fisheye, Thermal...)
-    with its own icon and marker color. Replaces what used to be a hardcoded
-    set of choices on CameraPlacement — new types can be added from the
-    NetBox UI with no code changes required.
+    A manageable placement type (e.g. Dome, PTZ, Bullet, Fisheye, AP,
+    Switch...) with its own icon, marker color, and category. Displayed
+    in the UI as "Placement Type" — kept as CameraType internally since
+    this plugin started camera-only, and NetBox core already has its own
+    unrelated DeviceType model (hardware/rack specs) that this must not
+    be confused with.
+
+    The category determines which fields actually apply: direction and
+    field-of-view (the coverage cone) only make sense for cameras — an
+    access point or a switch doesn't have a "field of view."
     """
+
+    CATEGORY_CAMERA = "camera"
+    CATEGORY_AP = "ap"
+    CATEGORY_ACCESS_CONTROL = "access_control"
+    CATEGORY_SWITCH = "switch"
+    CATEGORY_UPS = "ups"
+    CATEGORY_OTHER = "other"
+    CATEGORY_CHOICES = [
+        (CATEGORY_CAMERA, "Camera"),
+        (CATEGORY_AP, "Access Point"),
+        (CATEGORY_ACCESS_CONTROL, "Access Control"),
+        (CATEGORY_SWITCH, "Switch"),
+        (CATEGORY_UPS, "UPS"),
+        (CATEGORY_OTHER, "Other"),
+    ]
 
     PRESET_DOME = "dome"
     PRESET_PTZ = "ptz"
     PRESET_BULLET = "bullet"
     PRESET_FISHEYE = "fisheye"
+    PRESET_AP = "ap"
+    PRESET_ACCESS_CONTROL = "access_control"
+    PRESET_SWITCH = "switch"
+    PRESET_UPS = "ups"
     PRESET_GENERIC = "generic"
     PRESET_CHOICES = [
         ("", "None (use color swatch only)"),
-        (PRESET_DOME, "Dome (built-in)"),
-        (PRESET_PTZ, "PTZ (built-in)"),
-        (PRESET_BULLET, "Bullet (built-in)"),
-        (PRESET_FISHEYE, "Fisheye (built-in)"),
-        (PRESET_GENERIC, "Generic camera (built-in)"),
+        (PRESET_DOME, "Dome camera (built-in)"),
+        (PRESET_PTZ, "PTZ camera (built-in)"),
+        (PRESET_BULLET, "Bullet camera (built-in)"),
+        (PRESET_FISHEYE, "Fisheye camera (built-in)"),
+        (PRESET_AP, "Access Point (built-in)"),
+        (PRESET_ACCESS_CONTROL, "Access Control (built-in)"),
+        (PRESET_SWITCH, "Switch (built-in)"),
+        (PRESET_UPS, "UPS (built-in)"),
+        (PRESET_GENERIC, "Generic device (built-in)"),
     ]
 
     name = models.CharField(max_length=50, unique=True)
     slug = models.SlugField(max_length=50, unique=True)
+    category = models.CharField(
+        max_length=20,
+        choices=CATEGORY_CHOICES,
+        default=CATEGORY_CAMERA,
+        help_text=(
+            "Determines which fields apply — Direction and Field of View "
+            "(the coverage cone) are Camera-only and hidden for every "
+            "other category, since they don't apply to an AP, switch, "
+            "access control panel, or UPS."
+        ),
+    )
     preset_icon = models.CharField(
         max_length=20,
         blank=True,
@@ -90,15 +132,17 @@ class CameraType(NetBoxModel):
     color = models.CharField(
         max_length=7,
         default="#f2a65a",
-        help_text="Hex color used for the marker ring and direction cone (e.g. #f2a65a).",
+        help_text="Hex color used for the marker ring and (for cameras) direction cone (e.g. #f2a65a).",
     )
     fov_degrees = models.PositiveSmallIntegerField(
         default=90,
+        verbose_name="field of view (°)",
         validators=[MinValueValidator(1), MaxValueValidator(360)],
         help_text=(
-            "Horizontal field of view in degrees, used to draw the coverage "
-            "cone on the floor plan. Real-world fixed-lens cameras typically "
-            "run 90-120° for Dome and 70-110° for Bullet; PTZ varies hugely "
+            "Camera only — ignored for every other category. Horizontal "
+            "field of view in degrees, used to draw the coverage cone on "
+            "the floor plan. Real-world fixed-lens cameras typically run "
+            "90-120° for Dome and 70-110° for Bullet; PTZ varies hugely "
             "with zoom (as narrow as ~5° zoomed in, ~55-90° zoomed out) — "
             "60° is a reasonable default representing a moderately zoomed-out "
             "view. Fisheye cameras are commonly 180° (hemispherical) up to "
@@ -112,6 +156,12 @@ class CameraType(NetBoxModel):
 
     class Meta:
         ordering = ["name"]
+        verbose_name = "Placement Type"
+        verbose_name_plural = "Placement Types"
+
+    @property
+    def is_camera(self):
+        return self.category == self.CATEGORY_CAMERA
 
     def __str__(self):
         return self.name
@@ -134,10 +184,11 @@ class CameraType(NetBoxModel):
 
 class CameraPlacement(NetBoxModel):
     """
-    A single camera's pinned position on a FloorPlan. Deliberately does NOT
-    duplicate uplink switch/port or power source as separate text fields —
-    that data already lives on the linked Device's real interfaces, cables,
-    and power ports in NetBox core, and is looked up live for display so it
+    A single device's pinned position on a FloorPlan (camera, AP, access
+    control, switch, UPS...). Deliberately does NOT duplicate uplink
+    switch/port or power source as separate text fields — that data
+    already lives on the linked Device's real interfaces, cables, and
+    power ports in NetBox core, and is looked up live for display so it
     can never drift out of sync with the source of truth.
     """
 
@@ -159,7 +210,7 @@ class CameraPlacement(NetBoxModel):
         to=Device,
         on_delete=models.CASCADE,
         related_name="floorplan_placements",
-        help_text="The camera, as an existing NetBox device.",
+        help_text="The existing NetBox device being placed on the floor plan.",
     )
     camera_type = models.ForeignKey(
         to=CameraType,
@@ -167,7 +218,8 @@ class CameraPlacement(NetBoxModel):
         related_name="placements",
         null=True,
         blank=True,
-        help_text="Physical camera type, used to pick the marker icon on the floor plan.",
+        verbose_name="device type",
+        help_text="Placement type, used to pick the marker icon on the floor plan.",
     )
     x_pct = models.DecimalField(
         max_digits=6,
@@ -203,6 +255,8 @@ class CameraPlacement(NetBoxModel):
 
     class Meta:
         ordering = ["floorplan", "device"]
+        verbose_name = "Device Placement"
+        verbose_name_plural = "Device Placements"
         constraints = [
             models.UniqueConstraint(
                 fields=["device"],

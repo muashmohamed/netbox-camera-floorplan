@@ -12,7 +12,7 @@ class CameraTypeSerializer(NetBoxModelSerializer):
     class Meta:
         model = CameraType
         fields = [
-            "id", "url", "display", "name", "slug", "preset_icon",
+            "id", "url", "display", "name", "slug", "category", "preset_icon",
             "icon_image", "color", "fov_degrees", "description", "tags",
             "custom_fields", "created", "last_updated",
         ]

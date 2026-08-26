@@ -4,23 +4,64 @@
 {{ block.super }}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-  // Tie the "field of view" choice to the camera type being picked, so
-  // it's a deliberate step rather than a silently-applied default. Based
-  // on real-world camera specs: Dome ~90-120° (we use 90 as baseline),
+  // Tie the "field of view" choice to the type being picked, so it's a
+  // deliberate step rather than a silently-applied default. Based on
+  // real-world camera specs: Dome ~90-120° (we use 90 as baseline),
   // Bullet ~70-110° (80 as a representative middle value), PTZ varies
   // hugely with zoom (~5° zoomed in to ~55-90° zoomed out — 60 as a
-  // moderately-zoomed-out default). Always editable afterward.
+  // moderately-zoomed-out default), Fisheye commonly 180° hemispherical.
+  // Always editable afterward.
   var FOV_BY_PRESET = { dome: 90, bullet: 80, ptz: 60, fisheye: 180, generic: 90 };
+  // Picking a preset also suggests the matching category, since a Dome
+  // icon obviously means "Camera" and an AP icon obviously means
+  // "Access Point" — one less thing to remember to set separately.
+  var CATEGORY_BY_PRESET = {
+    dome: 'camera', bullet: 'camera', ptz: 'camera', fisheye: 'camera',
+    ap: 'ap', access_control: 'access_control', switch: 'switch', ups: 'ups',
+    generic: 'camera',
+  };
   var presetSelect = document.getElementById('id_preset_icon');
   var fovInput = document.getElementById('id_fov_degrees');
-  if (!presetSelect || !fovInput) return;
+  var categorySelect = document.getElementById('id_category');
 
-  presetSelect.addEventListener('change', function() {
-    var suggested = FOV_BY_PRESET[presetSelect.value];
-    if (suggested !== undefined) {
-      fovInput.value = suggested;
-    }
-  });
+  function fovFieldRow(){
+    if(!fovInput) return null;
+    return fovInput.closest('.mb-3, .form-group, .field, .row') || fovInput.parentElement;
+  }
+
+  function fovLabelRow(){
+    var label = document.querySelector('label[for="id_fov_degrees"]');
+    if(!label) return null;
+    return label.closest('.mb-3, .form-group, .field, .row');
+  }
+
+  function toggleFovVisibility(){
+    if(!categorySelect || !fovInput) return;
+    var isCamera = categorySelect.value === 'camera';
+    var row = fovFieldRow();
+    if(row) row.style.display = isCamera ? '' : 'none';
+    var labelRow = fovLabelRow();
+    if(labelRow && labelRow !== row) labelRow.style.display = isCamera ? '' : 'none';
+  }
+
+  if(presetSelect){
+    presetSelect.addEventListener('change', function() {
+      var suggestedFov = FOV_BY_PRESET[presetSelect.value];
+      if(suggestedFov !== undefined && fovInput){
+        fovInput.value = suggestedFov;
+      }
+      var suggestedCategory = CATEGORY_BY_PRESET[presetSelect.value];
+      if(suggestedCategory !== undefined && categorySelect){
+        categorySelect.value = suggestedCategory;
+        toggleFovVisibility();
+      }
+    });
+  }
+
+  if(categorySelect){
+    categorySelect.addEventListener('change', toggleFovVisibility);
+    toggleFovVisibility(); // reflect the correct state immediately, including when editing an existing type
+  }
 });
 </script>
 {% endblock %}

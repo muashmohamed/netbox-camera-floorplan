@@ -3,18 +3,18 @@ from netbox.plugins import PluginMenuButton, PluginMenuItem
 menu_items = (
     PluginMenuItem(
         link="plugins:netbox_camera_floorplan:cameratype_list",
-        link_text="Camera Types",
+        link_text="Placement Types",
         buttons=(
             PluginMenuButton(
                 link="plugins:netbox_camera_floorplan:cameratype_add",
-                title="Add Camera Type",
+                title="Add Placement Type",
                 icon_class="mdi mdi-plus-thick",
             ),
         ),
     ),
     PluginMenuItem(
         link="plugins:netbox_camera_floorplan:floorplan_list",
-        link_text="Camera Floor Plans",
+        link_text="Device Floor Plans",
         buttons=(
             PluginMenuButton(
                 link="plugins:netbox_camera_floorplan:floorplan_add",
@@ -25,6 +25,6 @@ menu_items = (
     ),
     PluginMenuItem(
         link="plugins:netbox_camera_floorplan:cameraplacement_list",
-        link_text="Camera Placements",
+        link_text="Device Placements",
     ),
 )
