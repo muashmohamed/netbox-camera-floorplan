@@ -52,6 +52,27 @@ class FloorPlan(NetBoxModel):
     def get_absolute_url(self):
         return reverse("plugins:netbox_camera_floorplan:floorplan", args=[self.pk])
 
+    def get_reachability_summary(self):
+        """
+        Quick-triage counts for the Floor Plans list: how many placements
+        on this floor plan are reachable/unreachable/no_ip/no_data, per
+        CameraPlacement.get_reachability_status(). Reuses that method
+        (not a separate implementation) so this summary and the
+        per-placement badges on the Device Placements list never
+        disagree with each other.
+
+        Callers building a list of many FloorPlans should select_related
+        "cameras__device" first (or otherwise ensure it's prefetched) —
+        this method itself doesn't add prefetching, since doing so on
+        every call would defeat prefetching done once across a whole
+        queryset upstream.
+        """
+        counts = {"total": 0, "reachable": 0, "unreachable": 0, "no_ip": 0, "no_data": 0}
+        for placement in self.cameras.all():
+            counts["total"] += 1
+            counts[placement.get_reachability_status()] += 1
+        return counts
+
 
 class CameraType(NetBoxModel):
     """
@@ -305,6 +326,8 @@ class CameraPlacement(NetBoxModel):
         Looks up a boolean custom field on the device (name configured via
         plugin settings) if a monitoring plugin like netbox-ping populates
         one. Returns True/False/None (None = not configured / unknown).
+        Used by the floor plan canvas's green/red ring — kept as a plain
+        3-value result since JS elsewhere checks it directly.
         """
         from django.conf import settings as django_settings
 
@@ -314,3 +337,25 @@ class CameraPlacement(NetBoxModel):
         if not field_name:
             return None
         return self.device.custom_field_data.get(field_name)
+
+    def get_reachability_status(self):
+        """
+        A richer status for list-page display than get_reachability()
+        alone provides — specifically distinguishes "no IP assigned" (an
+        administrative gap: nobody's configured this device for
+        monitoring yet) from "no data yet" (has an IP, a monitoring
+        plugin just hasn't reported on it) and from a real, confirmed-down
+        state. Conflating "no IP" with "unreachable" would create false
+        alarms in the troubleshooting view for devices that were never
+        actually tested.
+
+        Returns one of: "reachable", "unreachable", "no_ip", "no_data".
+        """
+        if not self.device.primary_ip4_id:
+            return "no_ip"
+        result = self.get_reachability()
+        if result is True:
+            return "reachable"
+        if result is False:
+            return "unreachable"
+        return "no_data"

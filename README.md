@@ -208,6 +208,37 @@ categorized as AP/Switch/etc., edit them once to set the right category.
   different image content (not just different byte sizes), and
   visually verified the extracted image for "page 2" actually shows
   the page-2 content, not page 1 or 3.
+- Added a **reachability Status column** to both list pages, for quick
+  troubleshooting triage:
+  - **Device Floor Plans list**: a red "N unreachable" badge if any
+    device on that floor plan is currently flagged down, a green "All
+    reachable" if every device with data is up, or a neutral "No data"
+    if reachability isn't configured/populated yet — scan this list to
+    immediately see *which floor plan* has a problem, before opening
+    any of them.
+  - **Device Placements list**: the same per-device Reachable/
+    Unreachable/No data badge, so once you've spotted a problem floor
+    plan above, this tells you *which specific device* is down.
+  - One simplification worth knowing: if a floor plan has some
+    reachable devices and some with no monitoring data yet (but none
+    confirmed unreachable), it shows the neutral "No data" state rather
+    than a finer-grained "3 of 5 reachable" breakdown — kept simple
+    since the primary goal is flagging actual problems, not a full
+    reachability dashboard.
+  - Both list views' querysets were updated to prefetch/select_related
+    the relevant devices, so this doesn't introduce an N+1 query
+    problem across many rows.
+- Added a distinct **"No IP" state**, separate from both "Unreachable"
+  and "No data" — a device with no IP assigned at all can never
+  actually be pinged, so lumping it in with "confirmed down via failed
+  ping" would create false alarms for devices that were simply never
+  tested, not devices that are actually broken. Priority order for the
+  Floor Plans summary badge: any confirmed Unreachable devices show
+  first (red), then any No IP devices (orange), then "All reachable"
+  (green) only if every device has confirmed data, otherwise a neutral
+  "No data". Verified with a standalone logic trace-through covering
+  all four states plus the priority ordering, not just written and
+  assumed correct.
 
 ## v0.2.0 changes (this version)
 
