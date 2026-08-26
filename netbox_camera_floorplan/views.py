@@ -321,11 +321,9 @@ class DeviceSearchView(LoginRequiredMixin, View):
 
     def get(self, request):
         query = request.GET.get("q", "").strip()
-        # No minimum length here on purpose — an empty query still runs
-        # (name__icontains="" matches everything), so opening the "place
-        # a camera" modal shows a useful default list of nearby devices
-        # immediately, sorted by relevance to this floor plan, without
-        # requiring the user to type anything first.
+        if len(query) < 2:
+            return JsonResponse({"results": []})
+
         devices = Device.objects.filter(name__icontains=query).select_related("site", "location")
 
         floorplan_id = request.GET.get("floorplan_id")

@@ -290,6 +290,7 @@
   function populateTypePicker(pickerEl, selectedTypeId){
     const display = pickerEl.querySelector('.cfp-ctp-display');
     const menu = pickerEl.querySelector('.cfp-ctp-menu');
+    menu.classList.remove('open'); // always start closed, regardless of prior state
     pickerEl.dataset.value = selectedTypeId != null ? String(selectedTypeId) : '';
     if(!cameraTypes.length){
       display.textContent = 'No camera types defined yet';
@@ -496,6 +497,7 @@
   const confirmAddBtn = document.getElementById('cfp-confirm-add');
 
   function searchDevices(query){
+    if(query.trim().length < 2){ resultsBox.innerHTML = ''; return; }
     fetch(`/plugins/camera-floorplan/device-search/?q=${encodeURIComponent(query)}&floorplan_id=${floorplanId}`)
       .then(r => r.json())
       .then(data => {
@@ -580,7 +582,6 @@
       confirmAddBtn.disabled = true;
       populateTypePicker(document.getElementById('cfp-new-type-picker'), null);
       getBsModal(document.getElementById('cfp-add-modal')).show();
-      searchDevices(''); // show a default browse list right away, no typing required
     });
   }
 

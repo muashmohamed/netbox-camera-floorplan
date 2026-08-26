@@ -186,6 +186,13 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
   at page load. Fixed properly this time by replacing both dropdowns
   with a small custom-built picker widget (plain `<div>`s, not a
   `<select>` at all), which nothing can auto-enhance out from under us.
+- The picker widget's dropdown menu now always starts closed when
+  (re)populated, defensively, in case it was left open from a prior
+  interaction.
+- Reverted the "default device list on modal open" feature from a
+  couple versions back — the device search box now requires typing at
+  least 2 characters before showing any results again, per updated
+  preference.
 
 ### A note on camera devices and racks
 
