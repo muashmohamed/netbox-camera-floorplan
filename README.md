@@ -93,6 +93,13 @@ categorized as AP/Switch/etc., edit them once to set the right category.
   of the existing table rather than replacing how NetBox renders it, so
   sorting, pagination, bulk select, and CSV export all keep working
   exactly as before.
+- Fixed the grouping not appearing at all — found via inspecting the
+  live DOM that **NetBox 4.6 renders this table via HTMX**
+  (`hx-target`/`hx-swap="outerHTML"`), swapping the actual rows in
+  after the initial page load rather than having them present at
+  `DOMContentLoaded`. The grouping script now re-runs on HTMX's own
+  `htmx:afterSwap`/`htmx:afterSettle` events (idempotently, so repeated
+  swaps never duplicate headers), instead of running once too early.
 
 ## v0.2.0 changes (this version)
 

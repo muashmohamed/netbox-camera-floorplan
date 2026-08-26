@@ -4,62 +4,73 @@
 {% block content %}
 {{ block.super }}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+(function(){
   // Same collapsible Site grouping as the Device Placements list, but
   // here "Site" is its own dedicated column rather than embedded text.
-  var table = document.querySelector('.card table, table.table');
-  if(!table) return;
-  var tbody = table.querySelector('tbody');
-  if(!tbody) return;
+  // Re-runs on every HTMX swap (NetBox 4.6 uses HTMX for this table's
+  // sorting/filtering/pagination) so grouping survives those actions
+  // instead of only appearing on first load or disappearing after them.
+  function applyGrouping(){
+    var table = document.querySelector('table.object-list');
+    if(!table) return;
+    var tbody = table.querySelector('tbody');
+    if(!tbody) return;
 
-  var headerCells = Array.from(table.querySelectorAll('thead th'));
-  var siteColIndex = headerCells.findIndex(function(th){
-    return th.textContent.trim().toLowerCase() === 'site';
-  });
-  if(siteColIndex === -1) return;
+    tbody.querySelectorAll('.cfp-group-header').forEach(function(el){ el.remove(); });
 
-  var dataRows = Array.from(tbody.querySelectorAll('tr'));
-  if(!dataRows.length) return;
-
-  var currentSite = null;
-  var groupIndex = 0;
-
-  dataRows.forEach(function(row){
-    var cells = row.querySelectorAll('td');
-    if(!cells[siteColIndex]) return;
-    var siteName = cells[siteColIndex].textContent.trim();
-    if(!siteName) return;
-
-    if(siteName !== currentSite){
-      currentSite = siteName;
-      groupIndex++;
-      var headerRow = document.createElement('tr');
-      headerRow.className = 'cfp-group-header';
-      headerRow.style.cursor = 'pointer';
-      headerRow.style.background = 'var(--tblr-bg-surface-secondary, #f2f4f6)';
-      var td = document.createElement('td');
-      td.colSpan = headerCells.length;
-      td.style.fontWeight = '600';
-      td.innerHTML = '<span class="cfp-group-arrow">▾</span> ' + siteName;
-      headerRow.appendChild(td);
-      row.parentNode.insertBefore(headerRow, row);
-    }
-    row.dataset.cfpGroup = 'g' + groupIndex;
-  });
-
-  tbody.querySelectorAll('.cfp-group-header').forEach(function(headerRow){
-    headerRow.addEventListener('click', function(){
-      var arrow = headerRow.querySelector('.cfp-group-arrow');
-      var collapsing = arrow.textContent.trim() === '▾';
-      arrow.textContent = collapsing ? '▸' : '▾';
-      var sibling = headerRow.nextElementSibling;
-      while(sibling && !sibling.classList.contains('cfp-group-header')){
-        sibling.style.display = collapsing ? 'none' : '';
-        sibling = sibling.nextElementSibling;
-      }
+    var headerCells = Array.from(table.querySelectorAll('thead th'));
+    var siteColIndex = headerCells.findIndex(function(th){
+      return th.textContent.trim().toLowerCase() === 'site';
     });
-  });
-});
+    if(siteColIndex === -1) return;
+
+    var dataRows = Array.from(tbody.querySelectorAll('tr'));
+    if(!dataRows.length) return;
+
+    var currentSite = null;
+    var groupIndex = 0;
+
+    dataRows.forEach(function(row){
+      var cells = row.querySelectorAll('td');
+      if(!cells[siteColIndex]) return;
+      var siteName = cells[siteColIndex].textContent.trim();
+      if(!siteName) return;
+
+      if(siteName !== currentSite){
+        currentSite = siteName;
+        groupIndex++;
+        var headerRow = document.createElement('tr');
+        headerRow.className = 'cfp-group-header';
+        headerRow.style.cursor = 'pointer';
+        headerRow.style.background = 'var(--tblr-bg-surface-secondary, #f2f4f6)';
+        var td = document.createElement('td');
+        td.colSpan = headerCells.length;
+        td.style.fontWeight = '600';
+        td.innerHTML = '<span class="cfp-group-arrow">▾</span> ' + siteName;
+        headerRow.appendChild(td);
+        row.parentNode.insertBefore(headerRow, row);
+      }
+      row.dataset.cfpGroup = 'g' + groupIndex;
+    });
+
+    tbody.querySelectorAll('.cfp-group-header').forEach(function(headerRow){
+      headerRow.addEventListener('click', function(){
+        var arrow = headerRow.querySelector('.cfp-group-arrow');
+        var collapsing = arrow.textContent.trim() === '▾';
+        arrow.textContent = collapsing ? '▸' : '▾';
+        var sibling = headerRow.nextElementSibling;
+        while(sibling && !sibling.classList.contains('cfp-group-header')){
+          sibling.style.display = collapsing ? 'none' : '';
+          sibling = sibling.nextElementSibling;
+        }
+      });
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', applyGrouping);
+  document.body.addEventListener('htmx:afterSwap', applyGrouping);
+  document.body.addEventListener('htmx:afterSettle', applyGrouping);
+})();
 </script>
 {% endblock %}
 
