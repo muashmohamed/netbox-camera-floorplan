@@ -111,6 +111,14 @@ categorized as AP/Switch/etc., edit them once to set the right category.
   doesn't depend on guessing undocumented internals. The actual
   generated JavaScript was extracted and validated with Node this time
   (not just Python-compiled), rather than assumed correct.
+- Fixed "Power source override" being completely unusable — it existed
+  in the model and was displayed if it had a value, but there was no
+  way to actually set it anywhere in the UI, and even if there had
+  been, the save request never included it. Added a small dropdown
+  (Unset/PoE/External Adapter) to the details panel, using the same
+  custom picker widget as Device Type (not a native `<select>`, for the
+  same Tom Select reason as before), and wired it into the save
+  request.
 
 ## v0.2.0 changes (this version)
 

@@ -323,6 +323,24 @@
     return pickerEl.dataset.value || '';
   }
 
+  const POWER_OPTIONS = [
+    { value: '', label: 'Unset' },
+    { value: 'poe', label: 'PoE' },
+    { value: 'adapter', label: 'External Adapter' },
+  ];
+  function populatePowerPicker(pickerEl, selectedValue){
+    const display = pickerEl.querySelector('.cfp-ctp-display');
+    const menu = pickerEl.querySelector('.cfp-ctp-menu');
+    menu.classList.remove('open');
+    const value = selectedValue || '';
+    pickerEl.dataset.value = value;
+    const selected = POWER_OPTIONS.find(o => o.value === value);
+    display.textContent = selected ? selected.label : 'Unset';
+    menu.innerHTML = POWER_OPTIONS.map(o =>
+      `<div class="cfp-ctp-option" data-id="${o.value}">${o.label}</div>`
+    ).join('');
+  }
+
   // Single set of delegated listeners handles every picker on the page,
   // open or closed, current or future — avoids re-binding on every
   // renderDetail() call and needs no native <select> (which NetBox's
@@ -460,6 +478,15 @@
       </div>
       <div class="mb-2"><strong>Uplink</strong><br>${uplinkHtml}</div>
       <div class="mb-2"><strong>Power</strong><br>${powerHtml}</div>
+      ${canEdit ? `
+        <div class="mb-2">
+          <label class="form-label small text-muted mb-1">Power source override (manual note — only shown above if NetBox has no real power connection for this device)</label>
+          <div class="cfp-ctp" id="cfp-power-picker" data-value="">
+            <div class="cfp-ctp-display" tabindex="0">Unset</div>
+            <div class="cfp-ctp-menu"></div>
+          </div>
+        </div>
+      ` : ''}
       <div class="mb-2" id="cfp-direction-wrap" style="display:${cameraTypeIsCamera(cam.camera_type_id) ? '' : 'none'};">
         <strong>Direction</strong><br>
         ${canEdit ? `
@@ -484,6 +511,7 @@
 
     if(canEdit){
       populateTypePicker(document.getElementById('cfp-type-picker'), cam.camera_type_id);
+      populatePowerPicker(document.getElementById('cfp-power-picker'), cam.power_source_override);
 
       document.getElementById('cfp-save-btn').addEventListener('click', () => {
         const dialEl = document.querySelector('#cfp-detail .cfp-direction-dial');
@@ -491,6 +519,7 @@
         cam.notes = document.getElementById('cfp-notes').value;
         const typeVal = getTypePickerValue(document.getElementById('cfp-type-picker'));
         cam.camera_type_id = typeVal ? parseInt(typeVal, 10) : null;
+        cam.power_source_override = getTypePickerValue(document.getElementById('cfp-power-picker'));
         savePlacement(cam);
       });
       document.getElementById('cfp-move-btn').addEventListener('click', () => {
@@ -523,6 +552,7 @@
         id: cam.id, device_id: cam.device_id, camera_type_id: cam.camera_type_id,
         x_pct: cam.x_pct, y_pct: cam.y_pct,
         direction_degrees: cam.direction_degrees, notes: cam.notes,
+        power_source_override: cam.power_source_override,
       }),
     }).then(r => r.json()).then(data => {
       if(data.error){ showError(data.error); return; }
