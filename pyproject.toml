@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "netbox-camera-floorplan"
 version = "0.3.0"
-description = "Place CCTV cameras on floor plan images inside NetBox, with live uplink and power lookups."
+description = "Place devices (cameras, APs, access control, switches, UPS) on floor plan images inside NetBox, with live uplink/power lookups, reachability, and PDF import/export."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }

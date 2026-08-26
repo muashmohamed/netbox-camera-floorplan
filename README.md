@@ -12,6 +12,64 @@ the migration risk for what is purely a display change. Every
 user-facing label says "device"/"placement" now; see the v0.3.0 section
 below.)
 
+## Features
+
+This started as a simple camera-floor-plan tool and has grown well
+beyond that — here's the current full picture, not just a changelog:
+
+**Floor plans & placement**
+- Upload a floor plan as an image (PNG/JPG) **or a PDF** — PDFs are
+  automatically converted (pick the page, for multi-page drawing sets)
+- Click anywhere on the floor plan to place a device; click-to-drop
+  "Move location" to reposition an existing one
+- One device can only be placed once, globally — enforced at the
+  database level, with a clear message (not a crash) if you try to
+  place something already placed elsewhere
+- Choose what each marker's label shows (Name / IP / both), and marker
+  size (Small → Extra Large) — remembered per-browser
+
+**Device Types (Placement Types)**
+- A manageable model (not hardcoded choices) with a category: Camera,
+  Access Point, Access Control, Switch, UPS, or Other
+- Built-in icon presets for every category, or upload your own; any
+  icon color/contrast works since icons render on their own backdrop
+- Cameras get a real coverage cone on the map, computed via actual
+  trigonometry from a configurable field-of-view angle (with sensible
+  real-world defaults per type — Dome 90°, Bullet 80°, PTZ 60°, Fisheye
+  180°); non-camera categories never show direction/FOV controls at all,
+  since those don't apply to a switch or a UPS
+- Wide-angle/fisheye (170°+) renders as a circle instead of a triangle,
+  since the cone geometry breaks down mathematically that wide
+
+**Live NetBox data, not duplicated data**
+- Uplink (interface → switch/port) and Power (PowerPort → source) are
+  looked up live from NetBox's own cable/power data — never
+  hand-entered, never able to drift out of sync
+- A "Power source override" manual note (PoE / dedicated circuit) is
+  available specifically for devices with no real power connection
+  modeled in NetBox yet (e.g. a PTZ that needs a separate circuit)
+- Green/red reachability ring, sourced from any monitoring plugin (e.g.
+  `netbox-ping`) via a configurable custom field — this plugin never
+  does its own pinging
+- Each device's real primary IP address shown on the map and in the
+  details panel
+
+**Finding your way around many floor plans**
+- A Site Group → Site → Location → Floor Plan cascading filter panel on
+  both the Floor Plans and Device Placements lists
+- Explicit, guaranteed sort order (Site → Location → Floor Plan →
+  Device) so related items cluster together even unfiltered
+- Collapsible Site-based grouping on both list pages (via NetBox's
+  `PluginTemplateExtension` API)
+
+**Export**
+- "Export to PDF" on the floor plan canvas, via the browser's own
+  Print → Save as PDF — no new dependencies, no server round-trip
+
+**REST API**
+- Full CRUD for Device Types, Floor Plans, and Device Placements at
+  `/api/plugins/camera-floorplan/`
+
 ## v0.3.0 — Device Floor Plans (generalized beyond cameras)
 
 This plugin no longer only supports cameras — it now covers any device
