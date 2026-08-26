@@ -163,6 +163,9 @@ NetBox's own cable and power port data, never duplicated or hand-entered.
   with no icon at all (no preset, no upload). Django's `format_html()`
   requires at least one argument to interpolate; the empty-state branch
   was calling it with none.
+- The "place a camera" modal now shows a default list of nearby devices
+  immediately when it opens, instead of requiring you to type at least
+  2 characters first before seeing anything.
 
 ### A note on camera devices and racks
 

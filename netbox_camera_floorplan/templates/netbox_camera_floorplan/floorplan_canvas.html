@@ -437,7 +437,6 @@
   const confirmAddBtn = document.getElementById('cfp-confirm-add');
 
   function searchDevices(query){
-    if(query.trim().length < 2){ resultsBox.innerHTML = ''; return; }
     fetch(`/plugins/camera-floorplan/device-search/?q=${encodeURIComponent(query)}&floorplan_id=${floorplanId}`)
       .then(r => r.json())
       .then(data => {
@@ -513,6 +512,7 @@
       confirmAddBtn.disabled = true;
       populateTypeSelect(document.getElementById('cfp-new-type'), null);
       getBsModal(document.getElementById('cfp-add-modal')).show();
+      searchDevices(''); // show a default browse list right away, no typing required
     });
   }
 
