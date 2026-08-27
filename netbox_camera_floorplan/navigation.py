@@ -36,6 +36,6 @@ menu_items = (
     PluginMenuItem(
         link="plugins:netbox_camera_floorplan:cctv_floorplan_list",
         link_text="CCTV Floor Plans",
-        permissions=["netbox_camera_floorplan.view_cctv_floorplan"],
+        permissions=["netbox_camera_floorplan.view_cctv_floorplan_floorplan"],
     ),
 )

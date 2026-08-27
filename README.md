@@ -349,6 +349,43 @@ applying this fix you'll need to:
    python manage.py shell -c "from django.contrib.auth.models import Permission; Permission.objects.filter(codename='view_cctv_floorplan').delete()"
    ```
 
+### Second bug found via extensive live testing: NetBox double-suffixes custom actions, period
+
+Even after the rename above, `has_perm()` for a user with the new
+permission correctly assigned still returned `False`. This took a lot
+of back-and-forth to fully diagnose (see the conversation for the full
+trail — deleting/recreating the permission, clearing caches, container
+restarts, none of it was the actual cause), until directly inspecting
+the `ObjectPermission.actions` value in the database revealed the real
+mechanism:
+
+NetBox's own admin form, when saving a custom (non-standard)
+permission action, stores it as `{codename}_{model_name}` —
+**appending the model name suffix itself**, regardless of what the
+codename already is. Then `has_perm()`/`get_all_permissions()`
+appends `_{model_name}` **again** when constructing the actual
+Django-permission-style string used for checks. The net effect: a
+custom action's real, checkable permission string is always
+double-suffixed with the model name — confirmed by testing this with
+two different codenames (`view_cctv_floorplan` and `view_cctv`) and
+observing the exact same doubled result (`view_cctv_floorplan_floorplan`)
+both times, ruling out "just pick a codename without the suffix" as a
+fix.
+
+**The actual fix**: both view classes' `permission_required`, and the
+nav item's `permissions=[...]`, now check for
+`netbox_camera_floorplan.view_cctv_floorplan_floorplan` — the real
+string NetBox produces, confirmed via `user.has_perm(...)` in the
+Django shell, not the single-suffixed string that seemed like it
+should be correct. The permission's underlying codename in
+`models.py` stays `view_cctv` (unchanged from the previous fix) —
+only the string the views/nav check for changed.
+
+**If you already have a CCTV-access permission configured**, no
+changes needed there — it's already correctly checking the
+`view_cctv` action; this fix is purely in what the view/nav code
+expects to see, matching what NetBox actually produces.
+
 ## Restricting access to specific users/groups
 
 Every model here (`CameraType`/Device Types, `FloorPlan`, `CameraPlacement`)

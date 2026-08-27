@@ -67,19 +67,30 @@ class FloorPlanListView(generic.ObjectListView):
 class CCTVFloorPlanListView(generic.ObjectListView):
     """
     A separate, read-only list of every floor plan, for restricted
-    security staff access — deliberately gated on the new
-    view_cctv_floorplan permission, NOT the standard view_floorplan
-    permission the main list uses. Granting a user only this permission
-    gives them this page (and the read-only camera-only canvas it links
-    to) without unlocking the full editable Device Floor Plans section
-    at all.
+    security staff access — deliberately gated on a dedicated custom
+    permission, NOT the standard view_floorplan permission the main
+    list uses. Granting a user only this permission gives them this
+    page (and the read-only camera-only canvas it links to) without
+    unlocking the full editable Device Floor Plans section at all.
+
+    permission_required below is "view_cctv_floorplan_floorplan", not a
+    typo — NetBox's own permission system appends "_floorplan" (the
+    model name) onto a custom action's codename when storing an
+    ObjectPermission's selection, then appends it AGAIN when
+    constructing the actual has_perm()-checkable string. This happens
+    regardless of what the codename is named (confirmed by testing two
+    different codenames and observing the same doubled result both
+    times), so this checks the string NetBox actually produces rather
+    than the single-suffixed string that seemed like it should be
+    correct. The custom permission itself is declared with codename
+    "view_cctv" in models.py's Meta.permissions.
     """
 
     queryset = FloorPlan.objects.prefetch_related("cameras__device")
     table = tables.CCTVFloorPlanTable
     filterset = filtersets.FloorPlanFilterSet
     filterset_form = forms.FloorPlanFilterForm
-    permission_required = "netbox_camera_floorplan.view_cctv_floorplan"
+    permission_required = "netbox_camera_floorplan.view_cctv_floorplan_floorplan"
     template_name = "netbox_camera_floorplan/cctv_floorplan_list.html"
 
 
@@ -226,7 +237,7 @@ class CCTVFloorPlanCanvasView(PermissionRequiredMixin, View):
        an audience narrower than full Device Floor Plan access.
     """
 
-    permission_required = "netbox_camera_floorplan.view_cctv_floorplan"
+    permission_required = "netbox_camera_floorplan.view_cctv_floorplan_floorplan"
 
     def get(self, request, pk):
         floorplan = get_object_or_404(FloorPlan, pk=pk)
