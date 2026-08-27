@@ -253,6 +253,50 @@ categorized as AP/Switch/etc., edit them once to set the right category.
   **Server**, **Router**, **Firewall**, **NVR**, **ONT**, **Modem** —
   each with its own icon and auto-category-suggestion when picked,
   same pattern as the original set.
+- **Security fix**: `DeviceSearchView` (the device lookup used by the
+  "place a camera" modal) only required being logged in, not any
+  specific permission — meaning a user with zero access to this
+  plugin (or even to NetBox's own Devices) could still discover
+  device names/sites/locations through this one endpoint. Now
+  requires `netbox_camera_floorplan.add_cameraplacement`, the same
+  permission needed to actually place a device, closing that gap.
+  This matters specifically because this plugin's data (camera
+  coverage areas, physical security layouts) is meant to be
+  restricted, not visible to every NetBox user by default.
+
+## Restricting access to specific users/groups
+
+Every model here (`CameraType`/Device Types, `FloorPlan`, `CameraPlacement`)
+is a standard NetBox model, so NetBox's own built-in Permissions system
+already applies — no plugin-specific access control needed beyond what
+NetBox provides natively. By default, only NetBox superusers (or staff
+with explicitly assigned permissions) can see this plugin's pages at
+all; a regular user with no permissions assigned won't see the "Device
+Floor Plans" section in the Plugins menu, and will get a 403 if they
+try to access a URL directly.
+
+To grant access to a specific group of trusted users only:
+
+1. Go to **Admin → Authentication → Groups** (or **Users → Groups**,
+   depending on your NetBox version) and create a group, e.g.
+   "Security Team".
+2. Edit that group, and under **Permissions**, search for
+   `netbox_camera_floorplan` — assign whichever of these apply:
+   - `view_floorplan` — see floor plans and the camera canvas
+   - `add_floorplan` / `change_floorplan` / `delete_floorplan` — manage
+     floor plans themselves
+   - `view_cameraplacement` / `add_cameraplacement` /
+     `delete_cameraplacement` — place/move/remove devices on the canvas
+   - `view_cameratype` / `add_cameratype` / `change_cameratype` /
+     `delete_cameratype` — manage Device Types
+   For most "can view and place cameras, but not manage Device Types"
+   users, you'd typically assign `view_floorplan`,
+   `view_cameraplacement`, and `add_cameraplacement`.
+3. Add the specific trusted users to that group under **Users**.
+4. Users not in the group, and without these permissions some other
+   way, will not see this plugin's menu items or be able to load its
+   pages — this is standard NetBox behavior working exactly as
+   designed, not something this plugin had to build.
 
 ## v0.2.0 changes (this version)
 

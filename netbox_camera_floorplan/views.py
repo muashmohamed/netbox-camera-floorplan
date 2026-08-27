@@ -11,8 +11,6 @@ from django.views import View
 from django.views.decorators.csrf import csrf_protect
 from django.utils.decorators import method_decorator
 
-from django.contrib.auth.mixins import LoginRequiredMixin
-
 from netbox.views import generic
 
 from . import filtersets, forms, tables
@@ -60,7 +58,7 @@ class CameraTypeChangeLogView(generic.ObjectChangeLogView):
 # ---------------------------------------------------------------------------
 
 class FloorPlanListView(generic.ObjectListView):
-    queryset = FloorPlan.objects.all()
+    queryset = FloorPlan.objects.prefetch_related("cameras__device")
     table = tables.FloorPlanTable
     filterset = filtersets.FloorPlanFilterSet
     filterset_form = forms.FloorPlanFilterForm
@@ -96,7 +94,7 @@ class FloorPlanChangeLogView(generic.ObjectChangeLogView):
 # ---------------------------------------------------------------------------
 
 class CameraPlacementListView(generic.ObjectListView):
-    queryset = CameraPlacement.objects.all()
+    queryset = CameraPlacement.objects.select_related("device", "floorplan__site", "floorplan__location")
     table = tables.CameraPlacementTable
     filterset = filtersets.CameraPlacementFilterSet
     filterset_form = forms.CameraPlacementFilterForm
@@ -311,15 +309,23 @@ class CameraPlacementQuickDeleteView(PermissionRequiredMixin, View):
         return JsonResponse({"status": "deleted"})
 
 
-class DeviceSearchView(LoginRequiredMixin, View):
+class DeviceSearchView(PermissionRequiredMixin, View):
     """
     Small JSON search endpoint used by the "Add camera" modal's device
     lookup field, so the canvas never needs a raw NetBox REST API token in
     the browser — it reuses the logged-in session instead. Read-only.
 
+    Requires the same permission as actually placing a device, not just
+    being logged in — otherwise a user with zero access to this plugin
+    could still discover device names/sites/locations through this
+    endpoint, which matters given this plugin's data (camera coverage,
+    physical security layouts) is meant to be restricted.
+
     Optionally scoped to a FloorPlan's site/location via ?floorplan_id=,
     so devices belonging to that site/location are shown first.
     """
+
+    permission_required = "netbox_camera_floorplan.add_cameraplacement"
 
     def get(self, request):
         query = request.GET.get("q", "").strip()
