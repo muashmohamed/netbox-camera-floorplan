@@ -29,6 +29,7 @@ urlpatterns = [
     # CameraPlacement CRUD (mostly used from the canvas, but list view is useful too)
     path("cameras/", views.CameraPlacementListView.as_view(), name="cameraplacement_list"),
     path("cameras/import/", views.CameraPlacementBulkImportView.as_view(), name="cameraplacement_bulk_import"),
+    path("cameras/delete/", views.CameraPlacementBulkDeleteView.as_view(), name="cameraplacement_bulk_delete"),
     path("cameras/<int:pk>/delete/", views.CameraPlacementDeleteView.as_view(), name="cameraplacement_delete"),
     path("cameras/<int:pk>/changelog/", views.CameraPlacementChangeLogView.as_view(), name="cameraplacement_changelog"),
     path("cameras/<int:pk>/quick-delete/", views.CameraPlacementQuickDeleteView.as_view(), name="camera_quick_delete"),

@@ -12,7 +12,7 @@ from django.views.decorators.csrf import csrf_protect
 from django.utils.decorators import method_decorator
 
 from netbox.views import generic
-from netbox.object_actions import BulkExport, BulkImport
+from netbox.object_actions import BulkDelete, BulkExport, BulkImport
 
 from . import filtersets, forms, tables
 from .models import CameraPlacement, CameraType, FloorPlan
@@ -97,13 +97,15 @@ class FloorPlanChangeLogView(generic.ObjectChangeLogView):
 class CameraPlacementListView(generic.ObjectListView):
     # NetBox's default (AddObject, BulkImport, BulkExport, BulkEdit,
     # BulkRename, BulkDelete) assumes every one of those views exists.
-    # This model deliberately only has List/Import/Export/single-row-Delete
-    # views — creation is canvas-click or CSV-only, and there's no bulk
-    # edit/rename/delete view — so the others rendered as dead buttons
-    # (href="None", the same bug already fixed for the Import button
-    # itself). Restricting to what's real removes those dead links instead
-    # of just fixing their URLs one at a time as each gets clicked.
-    actions = (BulkImport, BulkExport)
+    # This model deliberately only has List/Import/Export/Delete(bulk and
+    # single-row) views — creation is canvas-click or CSV-only, and there's
+    # no edit or rename form — so Add/BulkEdit/BulkRename rendered as dead
+    # buttons (href="None", the same bug already fixed for Import). Note
+    # BulkDelete must stay in this tuple: without at least one multi=True
+    # action, NetBox hides the row-selection checkboxes entirely, which is
+    # what caused multi-select to disappear the first time this was cut
+    # down to (BulkImport, BulkExport) alone.
+    actions = (BulkImport, BulkExport, BulkDelete)
     # x_pct IS NULL sorts first in Postgres's default NULLS LAST-for-ASC
     # behavior only if we ask for it explicitly — ordering by "-x_pct"
     # descending puts NULLs (unplaced) first, which is exactly the
@@ -120,6 +122,12 @@ class CameraPlacementListView(generic.ObjectListView):
 
 class CameraPlacementDeleteView(generic.ObjectDeleteView):
     queryset = CameraPlacement.objects.all()
+
+
+class CameraPlacementBulkDeleteView(generic.BulkDeleteView):
+    queryset = CameraPlacement.objects.all()
+    filterset = filtersets.CameraPlacementFilterSet
+    table = tables.CameraPlacementTable
 
 
 class CameraPlacementChangeLogView(generic.ObjectChangeLogView):
