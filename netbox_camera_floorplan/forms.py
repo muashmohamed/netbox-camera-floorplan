@@ -241,6 +241,13 @@ class CameraPlacementFilterForm(NetBoxModelFilterSetForm):
             choices=[("", "---------"), ("true", "Needs NVR"), ("false", "Has NVR or N/A")],
         ),
     )
+    needs_attention = forms.NullBooleanField(
+        required=False,
+        label="Needs attention",
+        widget=forms.Select(
+            choices=[("", "---------"), ("true", "Needs attention (either)"), ("false", "All clear")],
+        ),
+    )
 
 
 class CameraPlacementImportForm(NetBoxModelImportForm):

@@ -87,6 +87,13 @@ class CameraPlacementFilterSet(NetBoxModelFilterSet):
         method="filter_needs_nvr",
         label="Needs NVR assignment",
     )
+    # Convenience combined filter for "anything that needs a look" —
+    # matches either condition without collapsing them into one column,
+    # so the detail (which one, or both) is still visible in the table.
+    needs_attention = django_filters.BooleanFilter(
+        method="filter_needs_attention",
+        label="Needs attention (either)",
+    )
 
     class Meta:
         model = CameraPlacement
@@ -102,6 +109,13 @@ class CameraPlacementFilterSet(NetBoxModelFilterSet):
         if value:
             return queryset.filter(camera_without_nvr)
         return queryset.exclude(camera_without_nvr)
+
+    def filter_needs_attention(self, queryset, name, value):
+        not_placed = Q(x_pct__isnull=True) | Q(y_pct__isnull=True)
+        camera_without_nvr = Q(camera_type__category=CameraType.CATEGORY_CAMERA, connected_nvr__isnull=True)
+        if value:
+            return queryset.filter(not_placed | camera_without_nvr)
+        return queryset.exclude(not_placed | camera_without_nvr)
 
     def search(self, queryset, name, value):
         if not value.strip():
