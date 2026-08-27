@@ -70,6 +70,66 @@ beyond that — here's the current full picture, not just a changelog:
 - Full CRUD for Device Types, Floor Plans, and Device Placements at
   `/api/plugins/camera-floorplan/`
 
+## v0.4.0 — NVR channel management + CSV bulk import
+
+**NVR channel tracking:**
+- Device Types with category **NVR** now have a **Channel capacity**
+  field (8/16/32/64/128 channels), matching the real-world spec sheet
+  for that NVR model — a "32-channel NVR" accepts up to 32 cameras.
+- A camera's Device Placement can be linked to an already-placed NVR
+  via **Connected NVR**, plus a **channel number** (1 = D1, 2 = D2,
+  etc.). Validation rejects: connecting to a non-NVR device, exceeding
+  the NVR's capacity, or two cameras claiming the same channel on the
+  same NVR.
+- The NVR's own detail panel shows a live **channel usage** summary
+  ("12 of 32 used") computed from however many cameras currently point
+  at it — this is read-only from the NVR side; the camera is what
+  declares the connection, not the other way around (see CSV note
+  below for why).
+- An NVR can be fed by cameras on other floor plans too — the picker
+  lists every placed NVR system-wide, not just ones on the current
+  floor plan.
+
+**CSV bulk import for Device Placements:**
+- New **Plugins → Device Placements → Import** button, standard NetBox
+  CSV import. Columns: `device`, `camera_type`, `floorplan`,
+  `connected_nvr`, `nvr_channel`, `power_source_override`, `notes`,
+  `tags`.
+- `device` and `connected_nvr` are both resolved against real NetBox
+  devices by name — never free text. `connected_nvr` is a two-hop
+  lookup: you put the *NVR's own device name* in that column, and it's
+  matched to that device's existing NVR placement.
+- `floorplan` is matched by its full display string: `"Site / Name"` or
+  `"Site / Location / Name"`.
+- **Deliberately excludes x/y position** — canvas placement (clicking
+  the device onto the floor plan image) stays a manual step. An
+  imported row shows up in a new **"Unplaced devices"** panel on that
+  floor plan's canvas page; click **Place**, then click the canvas to
+  drop it, same as any other marker.
+- Row order matters if an NVR and its cameras are in the same file: the
+  NVR's row must come before any camera row that references it, since
+  `connected_nvr` can only resolve to an NVR that already has a
+  placement (from an earlier row in the same import, or one placed
+  separately beforehand).
+- This means bulk-adding 40 cameras with their NVR/channel assignments
+  already filled in is one CSV, one import — no per-camera clicking
+  required for anything except final canvas positioning.
+
+One honest caveat: `channel_capacity` renders as a native `<select>` on
+the Device Type edit form. It's hidden/shown based on category using
+the same direct-style-manipulation approach as the existing FOV field
+(not NetBox's own field-wrapper classes, which proved unreliable
+earlier) — this should behave correctly, matching the already-working
+"Marker size" dropdown pattern elsewhere in this plugin, but hasn't
+been exercised against a live NetBox instance yet.
+
+**Migration note:** this tarball had no existing migrations at all —
+not even for the original models. Rather than hand-author one (error
+prone for models this size), run `makemigrations` on your server after
+installing this version; it will generate the correct migration
+covering both the pre-existing schema and everything new here in one
+pass. See "Applying this update" below for the exact commands.
+
 ## v0.3.0 — Device Floor Plans (generalized beyond cameras)
 
 This plugin no longer only supports cameras — it now covers any device
@@ -263,128 +323,6 @@ categorized as AP/Switch/etc., edit them once to set the right category.
   This matters specifically because this plugin's data (camera
   coverage areas, physical security layouts) is meant to be
   restricted, not visible to every NetBox user by default.
-
-## Restricted, read-only CCTV Floor Plans (for security team access)
-
-A new, completely separate section — **CCTV Floor Plans** — for
-granting narrower access than the full editable Device Floor Plans
-section, e.g. to a security team who should be able to see camera
-coverage but never add/move/delete anything, and never see non-camera
-devices (switches, APs, UPS...) at all.
-
-**Gated on its own dedicated permission**, `view_cctv_floorplan` —
-completely decoupled from `view_floorplan`. A user granted only this
-permission sees just the "CCTV Floor Plans" nav item (the "Device
-Floor Plans" section doesn't appear for them at all, not even the
-menu item), and can't reach the editable canvas even by guessing the
-URL.
-
-**Two guarantees this specific view provides, verified by tracing
-every `can_edit`/`canEdit` check in the shared canvas template:**
-1. **Camera-only, always.** The queryset is filtered to
-   `camera_type__category = "camera"` before anything is serialized —
-   switches/APs/UPS/etc. never appear, not even in the aggregate
-   "Cameras" count or the Status badge. A placement with no Device
-   Type set is excluded too, since it can't be confirmed to be a
-   camera.
-2. **Hardcoded read-only, not permission-dependent.** `can_edit` is
-   set to `False` unconditionally in this view — never derived from
-   the requesting user's other permissions. Confirmed by tracing every
-   `can_edit`/`canEdit` reference in `floorplan_canvas.html`: the
-   click-to-place/move handler is only ever registered `if(canEdit)`,
-   every editable control (Device Type picker, Direction dial, Power
-   override, Notes, Save/Move/Delete buttons) falls back to plain
-   read-only text via a ternary, and the list page's action column has
-   zero buttons at all (`ActionsColumn(actions=())`), not just
-   permission-blocked ones. Clicking a marker to view its details still
-   works — only editing is removed.
-
-**Requires a migration** (`view_cctv_floorplan` is a custom Django
-permission, added via `Meta.permissions` on `FloorPlan`).
-
-To set this up for a security team, in **Admin → Groups**, assign only
-`netbox_camera_floorplan.view_cctv_floorplan` to their group — nothing
-else from this plugin. See "Restricting access to specific
-users/groups" above for the general permissions walkthrough.
-
-### Bug found and fixed: custom permission codename double-suffixing
-
-While actually testing this with a real restricted user (not just
-reading the code), the permission was assigned exactly correctly in
-NetBox's admin UI, yet the user still got "You do not have permission"
-on the very page that permission should have granted. Diagnosed via
-`user.get_all_permissions()` directly in the Django shell, which
-revealed the real permission string NetBox had constructed:
-
-```
-netbox_camera_floorplan.view_cctv_floorplan_floorplan
-```
-
-A doubled `_floorplan` suffix. NetBox's own permission system
-automatically appends `_{model_name}` onto whatever action name is
-stored, when constructing the actual string checked at request time.
-The original codename, `view_cctv_floorplan`, already ended in
-`_floorplan` (chosen to read naturally, following Django's usual
-`{action}_{modelname}` convention) — NetBox appended the suffix again
-on top, producing a string that never matched what the view's
-`permission_required` actually checked for.
-
-**Fixed** by renaming the codename to `view_cctv` (dropping the
-redundant model-name suffix) — NetBox's automatic suffixing now
-correctly produces `view_cctv` + `_floorplan` = `view_cctv_floorplan`,
-matching the view's check exactly. No changes needed in `views.py`,
-since it was already checking for the correct final string all along.
-
-**If you already created a permission using the old codename**, after
-applying this fix you'll need to:
-1. Apply the new migration (creates the new, correctly-wired
-   `view_cctv` permission — the old `view_cctv_floorplan` permission
-   row is not automatically removed from the database).
-2. Edit your existing CCTV-access permission in NetBox's admin,
-   uncheck the old action checkbox, check the new one (same
-   description text, so look for whichever one is newly available),
-   and save.
-3. Optionally clean up the orphaned old permission row:
-   ```
-   python manage.py shell -c "from django.contrib.auth.models import Permission; Permission.objects.filter(codename='view_cctv_floorplan').delete()"
-   ```
-
-### Second bug found via extensive live testing: NetBox double-suffixes custom actions, period
-
-Even after the rename above, `has_perm()` for a user with the new
-permission correctly assigned still returned `False`. This took a lot
-of back-and-forth to fully diagnose (see the conversation for the full
-trail — deleting/recreating the permission, clearing caches, container
-restarts, none of it was the actual cause), until directly inspecting
-the `ObjectPermission.actions` value in the database revealed the real
-mechanism:
-
-NetBox's own admin form, when saving a custom (non-standard)
-permission action, stores it as `{codename}_{model_name}` —
-**appending the model name suffix itself**, regardless of what the
-codename already is. Then `has_perm()`/`get_all_permissions()`
-appends `_{model_name}` **again** when constructing the actual
-Django-permission-style string used for checks. The net effect: a
-custom action's real, checkable permission string is always
-double-suffixed with the model name — confirmed by testing this with
-two different codenames (`view_cctv_floorplan` and `view_cctv`) and
-observing the exact same doubled result (`view_cctv_floorplan_floorplan`)
-both times, ruling out "just pick a codename without the suffix" as a
-fix.
-
-**The actual fix**: both view classes' `permission_required`, and the
-nav item's `permissions=[...]`, now check for
-`netbox_camera_floorplan.view_cctv_floorplan_floorplan` — the real
-string NetBox produces, confirmed via `user.has_perm(...)` in the
-Django shell, not the single-suffixed string that seemed like it
-should be correct. The permission's underlying codename in
-`models.py` stays `view_cctv` (unchanged from the previous fix) —
-only the string the views/nav check for changed.
-
-**If you already have a CCTV-access permission configured**, no
-changes needed there — it's already correctly checking the
-`view_cctv` action; this fix is purely in what the view/nav code
-expects to see, matching what NetBox actually produces.
 
 ## Restricting access to specific users/groups
 

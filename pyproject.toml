@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "netbox-camera-floorplan"
-version = "0.3.0"
-description = "Place devices (cameras, APs, access control, switches, UPS) on floor plan images inside NetBox, with live uplink/power lookups, reachability, and PDF import/export."
+version = "0.4.0"
+description = "Place devices (cameras, APs, access control, switches, UPS, NVRs) on floor plan images inside NetBox, with live uplink/power lookups, reachability, NVR channel capacity management, and CSV bulk import."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
