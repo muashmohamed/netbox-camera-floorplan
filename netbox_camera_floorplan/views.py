@@ -110,10 +110,25 @@ class CameraPlacementListView(generic.ObjectListView):
     # behavior only if we ask for it explicitly — ordering by "-x_pct"
     # descending puts NULLs (unplaced) first, which is exactly the
     # "needs attention" ordering we want as a passive reminder, without
-    # requiring anyone to remember to apply the Placed filter.
+    # requiring anyone to remember to apply the Placed filter. The
+    # needs_nvr annotation does the same for cameras missing an NVR link
+    # (whether never assigned, or orphaned by a deleted NVR) — it sorts
+    # second, after "not even placed yet", since an unplaced device needs
+    # attention regardless of its NVR status.
     queryset = (
-        CameraPlacement.objects.select_related("device", "floorplan__site", "floorplan__location")
-        .order_by("-x_pct", "device__name")
+        CameraPlacement.objects.select_related("device", "floorplan__site", "floorplan__location", "camera_type")
+        .annotate(
+            needs_nvr=models.Case(
+                models.When(
+                    camera_type__category=CameraType.CATEGORY_CAMERA,
+                    connected_nvr__isnull=True,
+                    then=models.Value(0),
+                ),
+                default=models.Value(1),
+                output_field=models.IntegerField(),
+            )
+        )
+        .order_by("-x_pct", "needs_nvr", "device__name")
     )
     table = tables.CameraPlacementTable
     filterset = filtersets.CameraPlacementFilterSet

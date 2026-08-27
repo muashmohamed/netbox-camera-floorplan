@@ -103,7 +103,7 @@ class CameraPlacementTable(NetBoxTable):
         empty_values=(), orderable=False, verbose_name="Placed",
         accessor="pk",  # dummy; render_placed does the real work
     )
-    connected_nvr = tables.Column(linkify=True, verbose_name="Connected NVR")
+    connected_nvr = tables.Column(verbose_name="Connected NVR")
     channel = tables.Column(
         empty_values=(), orderable=False, accessor="nvr_channel",
     )
@@ -152,6 +152,18 @@ class CameraPlacementTable(NetBoxTable):
             '<a href="{}" class="btn btn-xs text-bg-orange" title="Needs a canvas click to set its position">{}</a>',
             url, "Unplaced",
         )
+
+    def render_connected_nvr(self, value, record):
+        if value:
+            return format_html('<a href="{}">{}</a>', value.get_absolute_url(), str(value))
+        if record.camera_type and record.camera_type.is_camera:
+            return format_html(
+                '<span class="badge text-bg-orange" title="This camera isn\'t linked to any NVR/channel yet">{}</span>',
+                "Needs NVR",
+            )
+        # Not a camera (NVR/switch/AP/etc.) — the field genuinely doesn't
+        # apply, so no badge, just the same blank dash as any other N/A cell.
+        return "—"
 
     def render_channel(self, record):
         return record.get_channel_label() or "—"
