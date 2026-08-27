@@ -103,7 +103,7 @@ class CameraPlacementTable(NetBoxTable):
         empty_values=(), orderable=False, verbose_name="Placed",
         accessor="pk",  # dummy; render_placed does the real work
     )
-    connected_nvr = tables.Column(verbose_name="Connected NVR")
+    connected_nvr = tables.Column(verbose_name="Connected NVR", empty_values=())
     channel = tables.Column(
         empty_values=(), orderable=False, accessor="nvr_channel",
     )
