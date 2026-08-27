@@ -166,11 +166,43 @@ class CameraPlacementDeleteView(generic.ObjectDeleteView):
                 )
         return super().get(request, *args, **kwargs)
 
+    def post(self, request, *args, **kwargs):
+        # The pre_delete signal (models.py: clear_orphaned_nvr_channel)
+        # verified correct in isolation via a direct instance.delete()
+        # call, but observed NOT firing when triggered through this exact
+        # view's actual delete flow in practice — NetBox's ObjectDeleteView
+        # apparently performs the underlying deletion through a path that
+        # doesn't reliably trigger Django's standard signal dispatch for
+        # every field-clearing side effect. Rather than keep chasing that
+        # internal mechanism, this does the cleanup explicitly and
+        # unconditionally, ahead of whatever the base view's post() does —
+        # guaranteed correct regardless of how NetBox implements deletion
+        # underneath. The signal stays in place too, as a harmless second
+        # layer for any other path that does use a normal .delete() call.
+        instance = get_object_or_404(self.queryset, pk=kwargs.get("pk"))
+        if instance.camera_type and instance.camera_type.is_nvr:
+            instance.connected_cameras.update(nvr_channel=None)
+        return super().post(request, *args, **kwargs)
+
 
 class CameraPlacementBulkDeleteView(generic.BulkDeleteView):
     queryset = CameraPlacement.objects.all()
     filterset = filtersets.CameraPlacementFilterSet
     table = tables.CameraPlacementTable
+
+    def post(self, request, *args, **kwargs):
+        # Same explicit-cleanup guarantee as the single-row delete view
+        # above, and for the same reason — don't rely on the pre_delete
+        # signal alone for this.
+        pks = request.POST.getlist("pk")
+        if pks:
+            nvr_ids = list(
+                self.queryset.filter(pk__in=pks, camera_type__category=CameraType.CATEGORY_NVR)
+                .values_list("pk", flat=True)
+            )
+            if nvr_ids:
+                CameraPlacement.objects.filter(connected_nvr_id__in=nvr_ids).update(nvr_channel=None)
+        return super().post(request, *args, **kwargs)
 
 
 class CameraPlacementChangeLogView(generic.ObjectChangeLogView):
