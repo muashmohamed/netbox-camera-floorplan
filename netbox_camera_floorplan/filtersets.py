@@ -71,10 +71,23 @@ class CameraPlacementFilterSet(NetBoxModelFilterSet):
         queryset=Location.objects.all(),
         label="Location",
     )
+    # is_placed isn't a real database column (it's a Python property
+    # derived from x_pct/y_pct being null or not), so it needs an
+    # explicit BooleanFilter with a custom method rather than the
+    # automatic Meta.fields machinery, which only works on actual fields.
+    is_placed = django_filters.BooleanFilter(
+        method="filter_is_placed",
+        label="Placed on canvas",
+    )
 
     class Meta:
         model = CameraPlacement
         fields = ("id", "floorplan", "device", "camera_type", "connected_nvr")
+
+    def filter_is_placed(self, queryset, name, value):
+        if value:
+            return queryset.filter(x_pct__isnull=False, y_pct__isnull=False)
+        return queryset.filter(Q(x_pct__isnull=True) | Q(y_pct__isnull=True))
 
     def search(self, queryset, name, value):
         if not value.strip():

@@ -20,8 +20,22 @@ class CameraTypeTable(NetBoxTable):
     def render_category(self, value, record):
         return record.get_category_display()
 
+    def render_fov_degrees(self, value, record):
+        # Stored value is meaningless for non-camera types (only the
+        # camera-cone drawing code on the canvas reads it, already gated
+        # on is_camera) — show that plainly instead of a confusing 90°
+        # default that was never actually configured for this type.
+        # Deliberately not adding a "°" suffix here, to avoid changing
+        # the format of already-working camera rows — the column header
+        # already says "(°)".
+        return value if record.is_camera else "—"
+
     def render_channel_capacity(self, value):
-        return f"{value} channels" if value else "—"
+        # `value` here is already the human label from CHANNEL_CAPACITY_CHOICES
+        # ("8 channels", not the raw int 8) — django-tables2 renders
+        # choice-field columns via their display label automatically, so
+        # appending " channels" again produced "8 channels channels".
+        return value if value else "—"
 
     def render_icon_preview(self, record):
         icon_url = record.get_icon_url()

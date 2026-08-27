@@ -94,7 +94,15 @@ class FloorPlanChangeLogView(generic.ObjectChangeLogView):
 # ---------------------------------------------------------------------------
 
 class CameraPlacementListView(generic.ObjectListView):
-    queryset = CameraPlacement.objects.select_related("device", "floorplan__site", "floorplan__location")
+    # x_pct IS NULL sorts first in Postgres's default NULLS LAST-for-ASC
+    # behavior only if we ask for it explicitly — ordering by "-x_pct"
+    # descending puts NULLs (unplaced) first, which is exactly the
+    # "needs attention" ordering we want as a passive reminder, without
+    # requiring anyone to remember to apply the Placed filter.
+    queryset = (
+        CameraPlacement.objects.select_related("device", "floorplan__site", "floorplan__location")
+        .order_by("-x_pct", "device__name")
+    )
     table = tables.CameraPlacementTable
     filterset = filtersets.CameraPlacementFilterSet
     filterset_form = forms.CameraPlacementFilterForm

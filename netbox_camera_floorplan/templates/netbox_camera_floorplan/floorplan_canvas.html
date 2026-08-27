@@ -60,7 +60,7 @@
       No camera types yet? <a href="{% url 'plugins:netbox_camera_floorplan:cameratype_add' %}">Add one</a> first, then come back here.
     </p>
     <p class="text-muted small">
-      Adding many devices at once? <a href="{% url 'plugins:netbox_camera_floorplan:cameraplacement_import' %}">Bulk import via CSV</a> — device, device type, and NVR/channel assignment all in one go (position is still set manually here afterward).
+      Adding many devices at once? <a href="{% url 'plugins:netbox_camera_floorplan:cameraplacement_bulk_import' %}">Bulk import via CSV</a> — device, device type, and NVR/channel assignment all in one go (position is still set manually here afterward).
     </p>
     {% endif %}
   </div>

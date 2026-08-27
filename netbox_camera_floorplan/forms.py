@@ -227,6 +227,13 @@ class CameraPlacementFilterForm(NetBoxModelFilterSetForm):
         label="Floor Plan",
         query_params={"site_id": "$site_id", "location_id": "$location_id"},
     )
+    is_placed = forms.NullBooleanField(
+        required=False,
+        label="Placed on canvas",
+        widget=forms.Select(
+            choices=[("", "---------"), ("true", "Placed"), ("false", "Unplaced — needs canvas click")],
+        ),
+    )
 
 
 class CameraPlacementImportForm(NetBoxModelImportForm):
