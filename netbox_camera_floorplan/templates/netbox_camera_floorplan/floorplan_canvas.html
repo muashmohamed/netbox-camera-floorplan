@@ -588,9 +588,8 @@
             <div class="cfp-ctp-display" tabindex="0">Select an NVR…</div>
             <div class="cfp-ctp-menu"></div>
           </div>
-          <input type="number" id="cfp-nvr-channel" class="form-control form-control-sm mt-1" min="1"
-            placeholder="Channel number (D1, D2, …)" value="${cam.nvr_channel != null ? cam.nvr_channel : ''}"
-            ${cam.connected_nvr_id == null ? 'disabled' : ''}>
+          <select id="cfp-nvr-channel" class="form-select form-select-sm mt-1" ${cam.connected_nvr_id == null ? 'disabled' : ''}>
+          </select>
         ` : (cam.connected_nvr_id != null
               ? `${nvrById(cam.connected_nvr_id) ? nvrById(cam.connected_nvr_id).device_name : 'NVR'} — ${cam.channel_label || ''}`
               : '<span class="text-muted">None</span>')}
@@ -621,21 +620,44 @@
       if(nvrPicker) populateNvrPicker(nvrPicker, cam.connected_nvr_id);
 
       const channelInput = document.getElementById('cfp-nvr-channel');
-      function syncChannelInputToNvr(nvrIdRaw){
+      function populateChannelSelect(nvrIdRaw){
         if(!channelInput) return;
         const nvrId = nvrIdRaw ? parseInt(nvrIdRaw, 10) : null;
         const nvr = nvrId != null ? nvrById(nvrId) : null;
+        channelInput.innerHTML = '';
         channelInput.disabled = !nvr;
-        if(nvr && nvr.capacity) channelInput.max = nvr.capacity;
-        if(!nvr) channelInput.value = '';
+        if(!nvr){
+          channelInput.innerHTML = '<option value="">Select an NVR first</option>';
+          return;
+        }
+        // This camera's own current channel only counts as "current" if
+        // it's on THIS nvr — switching to a different NVR means whatever
+        // channel it held before is irrelevant here, not something to
+        // preserve or exempt from locking.
+        const currentChannel = (nvr.id === cam.connected_nvr_id) ? cam.nvr_channel : null;
+        const usedChannels = nvr.used_channels || {}; // JSON object keys are strings
+        const capacity = nvr.capacity || 0;
+        let options = '<option value="">Select a channel…</option>';
+        for(let ch = 1; ch <= capacity; ch++){
+          const usedBy = usedChannels[String(ch)];
+          const isCurrent = ch === currentChannel;
+          if(usedBy && !isCurrent){
+            options += `<option value="${ch}" disabled>D${ch} — used by ${usedBy}</option>`;
+          } else {
+            options += `<option value="${ch}" ${isCurrent ? 'selected' : ''}>D${ch}</option>`;
+          }
+        }
+        channelInput.innerHTML = options;
       }
+      populateChannelSelect(cam.connected_nvr_id);
       if(nvrPicker){
         // The generic .cfp-ctp-option delegated listener (defined once,
         // above) already updates nvrPicker.dataset.value on click — this
-        // just reacts to that same click to also enable/disable and clamp
-        // the channel number input, without duplicating the picker logic.
+        // just reacts to that same click to rebuild the channel options
+        // for whichever NVR was just picked, without duplicating the
+        // picker logic itself.
         nvrPicker.addEventListener('click', () => {
-          setTimeout(() => syncChannelInputToNvr(nvrPicker.dataset.value), 0);
+          setTimeout(() => populateChannelSelect(nvrPicker.dataset.value), 0);
         });
       }
 

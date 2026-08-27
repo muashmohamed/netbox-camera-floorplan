@@ -437,6 +437,23 @@ class CameraPlacement(NetBoxModel):
         used = self.connected_cameras.count()
         return {"used": used, "capacity": capacity, "available": max(capacity - used, 0)}
 
+    def get_nvr_channel_assignments(self):
+        """
+        For a placement whose own Device Type category is NVR: which
+        channel numbers are currently claimed and by which device — e.g.
+        {3: "CAM-ENTRANCE-01", 5: "CAM-LOBBY-02"}. Used to build a channel
+        picker that locks already-taken numbers instead of letting a
+        second camera silently collide with one (caught by the
+        UniqueConstraint on save, but far better to prevent the pick in
+        the first place). Returns {} if this placement isn't an NVR.
+        """
+        if not self.camera_type or not self.camera_type.is_nvr:
+            return {}
+        return {
+            cam.nvr_channel: cam.device.name
+            for cam in self.connected_cameras.select_related("device").exclude(nvr_channel__isnull=True)
+        }
+
     # ---- Live lookups against NetBox's own connection data ----
 
     def get_uplink_terminations(self):

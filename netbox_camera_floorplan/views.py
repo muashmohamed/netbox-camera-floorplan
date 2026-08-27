@@ -277,6 +277,10 @@ class FloorPlanCanvasView(PermissionRequiredMixin, View):
                 "floorplan_name": str(nvr.floorplan),
                 "capacity": nvr.camera_type.channel_capacity if nvr.camera_type else None,
                 "usage": nvr.get_nvr_channel_usage(),
+                # JSON object keys are always strings, so channel numbers
+                # come through JS-side as string keys ("3", not 3) — the
+                # picker code below accounts for that.
+                "used_channels": nvr.get_nvr_channel_assignments(),
             }
             for nvr in nvr_placements
         ]
