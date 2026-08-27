@@ -12,6 +12,7 @@ from django.views.decorators.csrf import csrf_protect
 from django.utils.decorators import method_decorator
 
 from netbox.views import generic
+from netbox.object_actions import BulkExport, BulkImport
 
 from . import filtersets, forms, tables
 from .models import CameraPlacement, CameraType, FloorPlan
@@ -94,6 +95,15 @@ class FloorPlanChangeLogView(generic.ObjectChangeLogView):
 # ---------------------------------------------------------------------------
 
 class CameraPlacementListView(generic.ObjectListView):
+    # NetBox's default (AddObject, BulkImport, BulkExport, BulkEdit,
+    # BulkRename, BulkDelete) assumes every one of those views exists.
+    # This model deliberately only has List/Import/Export/single-row-Delete
+    # views — creation is canvas-click or CSV-only, and there's no bulk
+    # edit/rename/delete view — so the others rendered as dead buttons
+    # (href="None", the same bug already fixed for the Import button
+    # itself). Restricting to what's real removes those dead links instead
+    # of just fixing their URLs one at a time as each gets clicked.
+    actions = (BulkImport, BulkExport)
     # x_pct IS NULL sorts first in Postgres's default NULLS LAST-for-ASC
     # behavior only if we ask for it explicitly — ordering by "-x_pct"
     # descending puts NULLs (unplaced) first, which is exactly the
