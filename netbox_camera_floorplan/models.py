@@ -1,5 +1,7 @@
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from django.db.models.signals import pre_delete
+from django.dispatch import receiver
 from django.templatetags.static import static
 from django.urls import reverse
 
@@ -503,3 +505,22 @@ class CameraPlacement(NetBoxModel):
         if result is False:
             return "unreachable"
         return "no_data"
+
+
+@receiver(pre_delete, sender=CameraPlacement)
+def clear_orphaned_nvr_channel(sender, instance, **kwargs):
+    """
+    connected_nvr uses on_delete=SET_NULL, which only clears that FK field
+    on affected cameras — it leaves nvr_channel (a plain integer, not
+    itself an FK) holding its old value, producing a confusing
+    half-orphaned state: "Connected NVR: —" next to "NVR Channel: D5".
+
+    A signal — rather than overriding this model's own delete() method —
+    is what's needed here: BulkDeleteView and other bulk queryset.delete()
+    paths skip custom delete() overrides entirely (a well-known Django
+    gotcha), but Django still fires pre_delete/post_delete signals per
+    row even during a bulk delete, so this stays correct regardless of
+    whether the NVR is removed via the single-row action or bulk delete.
+    """
+    if instance.camera_type_id and instance.camera_type.is_nvr:
+        instance.connected_cameras.update(nvr_channel=None)

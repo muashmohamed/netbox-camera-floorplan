@@ -138,6 +138,28 @@ class CameraPlacementListView(generic.ObjectListView):
 class CameraPlacementDeleteView(generic.ObjectDeleteView):
     queryset = CameraPlacement.objects.all()
 
+    def get_extra_context(self, request, instance):
+        # connected_nvr uses on_delete=SET_NULL — deleting an NVR never
+        # deletes or breaks its cameras, it just clears their NVR/channel
+        # link (they'll show up flagged "Needs NVR" in the placements list
+        # afterward). That's a safe default, but still worth flagging
+        # explicitly here so it's never a silent surprise at the moment of
+        # deletion, not just something discoverable after the fact.
+        if instance.camera_type and instance.camera_type.is_nvr:
+            connected = list(instance.connected_cameras.select_related("device")[:10])
+            total = instance.connected_cameras.count()
+            if total:
+                names = ", ".join(c.device.name for c in connected)
+                if total > len(connected):
+                    names += f", and {total - len(connected)} more"
+                messages.warning(
+                    request,
+                    f"This NVR has {total} connected camera(s): {names}. Deleting it will "
+                    f"clear their NVR/channel assignment — the cameras themselves won't be "
+                    f"deleted, but they'll need a new NVR assigned afterward.",
+                )
+        return super().get_extra_context(request, instance)
+
 
 class CameraPlacementBulkDeleteView(generic.BulkDeleteView):
     queryset = CameraPlacement.objects.all()
