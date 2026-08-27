@@ -45,6 +45,10 @@
   </div>
 
   <div class="col-md-3 d-print-none">
+    <div class="card mb-3" id="cfp-unplaced-card" style="display:none;">
+      <div class="card-header">Unplaced devices</div>
+      <div class="card-body p-2" id="cfp-unplaced-list"></div>
+    </div>
     <div class="card">
       <div class="card-header">Device details</div>
       <div class="card-body" id="cfp-detail">
@@ -54,6 +58,9 @@
     {% if can_edit %}
     <p class="text-muted mt-2 small">
       No camera types yet? <a href="{% url 'plugins:netbox_camera_floorplan:cameratype_add' %}">Add one</a> first, then come back here.
+    </p>
+    <p class="text-muted small">
+      Adding many devices at once? <a href="{% url 'plugins:netbox_camera_floorplan:cameraplacement_import' %}">Bulk import via CSV</a> — device, device type, and NVR/channel assignment all in one go (position is still set manually here afterward).
     </p>
     {% endif %}
   </div>
@@ -197,9 +204,15 @@
   const floorplanId = {{ floorplan.pk }};
   const canEdit = {{ can_edit|yesno:"true,false" }};
   let cameras = {{ cameras_json|safe }};
-  const cameraTypes = {{ camera_types_json|safe }}; // [{id, name, color, icon_url}, ...]
+  let unplaced = {{ unplaced_json|safe }}; // devices imported via CSV — no x/y yet, awaiting a manual canvas click
+  const cameraTypes = {{ camera_types_json|safe }}; // [{id, name, color, icon_url, is_nvr, channel_capacity}, ...]
+  const nvrs = {{ nvrs_json|safe }}; // every already-placed NVR across ALL floor plans: [{id, device_name, floorplan_id, floorplan_name, capacity, usage}, ...]
   let selectedId = null;
   let movingCameraId = null;
+  // Set when the user clicks "Place" on an unplaced device — the next
+  // canvas click assigns that device's x/y via the existing save-camera
+  // endpoint (an update, not a create), rather than opening the add-modal.
+  let placingId = null;
   const LABEL_MODE_KEY = 'netbox_camera_floorplan_label_mode';
   let labelMode = localStorage.getItem(LABEL_MODE_KEY) || 'both';
 
@@ -315,6 +328,36 @@
     return type ? !!type.is_camera : true;
   }
 
+  function cameraTypeIsNvr(typeId){
+    const type = cameraTypeById(typeId);
+    return type ? !!type.is_nvr : false;
+  }
+
+  function nvrById(id){
+    return nvrs.find(n => n.id === id);
+  }
+
+  function populateNvrPicker(pickerEl, selectedNvrId){
+    const display = pickerEl.querySelector('.cfp-ctp-display');
+    const menu = pickerEl.querySelector('.cfp-ctp-menu');
+    menu.classList.remove('open');
+    pickerEl.dataset.value = selectedNvrId != null ? String(selectedNvrId) : '';
+    if(!nvrs.length){
+      display.textContent = 'No NVRs placed yet';
+      menu.innerHTML = '';
+      return;
+    }
+    const options = [{ id: '', label: 'None' }].concat(nvrs.map(n => ({
+      id: n.id,
+      label: `${n.device_name} (${n.usage ? n.usage.used + '/' + n.usage.capacity : '?'} used) — ${n.floorplan_name}`,
+    })));
+    const selected = options.find(o => String(o.id) === String(selectedNvrId || ''));
+    display.textContent = selected ? selected.label : 'Select an NVR…';
+    menu.innerHTML = options.map(o =>
+      `<div class="cfp-ctp-option" data-id="${o.id}">${o.label}</div>`
+    ).join('');
+  }
+
   function populateTypePicker(pickerEl, selectedTypeId){
     const display = pickerEl.querySelector('.cfp-ctp-display');
     const menu = pickerEl.querySelector('.cfp-ctp-menu');
@@ -375,11 +418,11 @@
       picker.querySelector('.cfp-ctp-display').textContent = option.textContent;
       picker.querySelector('.cfp-ctp-menu').classList.remove('open');
       if(picker.id === 'cfp-type-picker'){
+        const isCam = cameraTypeIsCamera(parseInt(option.dataset.id, 10));
         const directionWrap = document.getElementById('cfp-direction-wrap');
-        if(directionWrap){
-          const isCam = cameraTypeIsCamera(parseInt(option.dataset.id, 10));
-          directionWrap.style.display = isCam ? '' : 'none';
-        }
+        if(directionWrap) directionWrap.style.display = isCam ? '' : 'none';
+        const nvrWrap = document.getElementById('cfp-nvr-wrap');
+        if(nvrWrap) nvrWrap.style.display = isCam ? '' : 'none';
       }
       return;
     }
@@ -465,6 +508,33 @@
     });
   }
 
+  function renderUnplaced(){
+    const card = document.getElementById('cfp-unplaced-card');
+    const list = document.getElementById('cfp-unplaced-list');
+    if(!unplaced.length){
+      card.style.display = 'none';
+      return;
+    }
+    card.style.display = '';
+    list.innerHTML = unplaced.map(cam => `
+      <div class="d-flex align-items-center justify-content-between mb-1 small">
+        <span>${cameraIconHtml(cam.camera_type_id)} <a href="${cam.device_url}">${cam.device_name}</a></span>
+        ${canEdit ? `<button type="button" class="btn btn-xs btn-outline-primary py-0 px-1 cfp-place-btn" data-id="${cam.id}">
+          ${placingId === cam.id ? 'Click canvas…' : 'Place'}
+        </button>` : ''}
+      </div>
+    `).join('');
+    if(canEdit){
+      list.querySelectorAll('.cfp-place-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          placingId = (placingId === parseInt(btn.dataset.id, 10)) ? null : parseInt(btn.dataset.id, 10);
+          movingCameraId = null; // the two "click canvas to position something" modes are mutually exclusive
+          renderUnplaced();
+        });
+      });
+    }
+  }
+
   function renderDetail(){
     const cam = cameras.find(c => c.id === selectedId);
     if(!cam){
@@ -510,6 +580,27 @@
           <div class="text-center small text-muted cfp-direction-label">${cam.direction_degrees}°</div>
         ` : cam.direction_degrees + '°'}
       </div>
+      <div class="mb-2" id="cfp-nvr-wrap" style="display:${cameraTypeIsCamera(cam.camera_type_id) ? '' : 'none'};">
+        <strong>Connected NVR</strong><br>
+        ${canEdit ? `
+          <div class="cfp-ctp" id="cfp-nvr-picker" data-value="">
+            <div class="cfp-ctp-display" tabindex="0">Select an NVR…</div>
+            <div class="cfp-ctp-menu"></div>
+          </div>
+          <input type="number" id="cfp-nvr-channel" class="form-control form-control-sm mt-1" min="1"
+            placeholder="Channel number (D1, D2, …)" value="${cam.nvr_channel != null ? cam.nvr_channel : ''}"
+            ${cam.connected_nvr_id == null ? 'disabled' : ''}>
+        ` : (cam.connected_nvr_id != null
+              ? `${nvrById(cam.connected_nvr_id) ? nvrById(cam.connected_nvr_id).device_name : 'NVR'} — ${cam.channel_label || ''}`
+              : '<span class="text-muted">None</span>')}
+      </div>
+      ${cam.nvr_channel_usage ? `
+        <div class="mb-2">
+          <strong>Channel usage</strong><br>
+          ${cam.nvr_channel_usage.used} of ${cam.nvr_channel_usage.capacity} channels used
+          <span class="text-muted">(${cam.nvr_channel_usage.available} available)</span>
+        </div>
+      ` : ''}
       <div class="mb-2"><strong>Notes</strong><br>
         ${canEdit ? `<textarea id="cfp-notes" class="form-control form-control-sm">${cam.notes || ''}</textarea>` : (cam.notes || '<span class="text-muted">None</span>')}
       </div>
@@ -525,6 +616,27 @@
     if(canEdit){
       populateTypePicker(document.getElementById('cfp-type-picker'), cam.camera_type_id);
       populatePowerPicker(document.getElementById('cfp-power-picker'), cam.power_source_override);
+      const nvrPicker = document.getElementById('cfp-nvr-picker');
+      if(nvrPicker) populateNvrPicker(nvrPicker, cam.connected_nvr_id);
+
+      const channelInput = document.getElementById('cfp-nvr-channel');
+      function syncChannelInputToNvr(nvrIdRaw){
+        if(!channelInput) return;
+        const nvrId = nvrIdRaw ? parseInt(nvrIdRaw, 10) : null;
+        const nvr = nvrId != null ? nvrById(nvrId) : null;
+        channelInput.disabled = !nvr;
+        if(nvr && nvr.capacity) channelInput.max = nvr.capacity;
+        if(!nvr) channelInput.value = '';
+      }
+      if(nvrPicker){
+        // The generic .cfp-ctp-option delegated listener (defined once,
+        // above) already updates nvrPicker.dataset.value on click — this
+        // just reacts to that same click to also enable/disable and clamp
+        // the channel number input, without duplicating the picker logic.
+        nvrPicker.addEventListener('click', () => {
+          setTimeout(() => syncChannelInputToNvr(nvrPicker.dataset.value), 0);
+        });
+      }
 
       document.getElementById('cfp-save-btn').addEventListener('click', () => {
         const dialEl = document.querySelector('#cfp-detail .cfp-direction-dial');
@@ -533,6 +645,12 @@
         const typeVal = getTypePickerValue(document.getElementById('cfp-type-picker'));
         cam.camera_type_id = typeVal ? parseInt(typeVal, 10) : null;
         cam.power_source_override = getTypePickerValue(document.getElementById('cfp-power-picker'));
+        if(nvrPicker){
+          const nvrVal = getTypePickerValue(nvrPicker);
+          cam.connected_nvr_id = nvrVal ? parseInt(nvrVal, 10) : null;
+          cam.nvr_channel = (channelInput && channelInput.value !== '' && !channelInput.disabled)
+            ? parseInt(channelInput.value, 10) : null;
+        }
         savePlacement(cam);
       });
       document.getElementById('cfp-move-btn').addEventListener('click', () => {
@@ -566,6 +684,7 @@
         x_pct: cam.x_pct, y_pct: cam.y_pct,
         direction_degrees: cam.direction_degrees, notes: cam.notes,
         power_source_override: cam.power_source_override,
+        connected_nvr_id: cam.connected_nvr_id, nvr_channel: cam.nvr_channel,
       }),
     }).then(r => r.json()).then(data => {
       if(data.error){ showError(data.error); return; }
@@ -670,6 +789,27 @@
         return;
       }
 
+      if(placingId != null){
+        const idx = unplaced.findIndex(c => c.id === placingId);
+        if(idx === -1){ placingId = null; return; }
+        const cam = unplaced[idx];
+        fetch(`/plugins/camera-floorplan/floorplans/${floorplanId}/save-camera/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+          body: JSON.stringify({ id: cam.id, device_id: cam.device_id, x_pct: xPct, y_pct: yPct }),
+        }).then(r => r.json()).then(data => {
+          if(data.error){ showError(data.error); return; }
+          cam.x_pct = xPct;
+          cam.y_pct = yPct;
+          unplaced.splice(idx, 1);
+          cameras.push(cam);
+          placingId = null;
+          renderUnplaced();
+          renderMarkers();
+        }).catch(() => showError('Could not place this device. Please try again.'));
+        return;
+      }
+
       pendingClick = { x_pct: xPct, y_pct: yPct };
       selectedNewDeviceId = null;
       searchInput.value = '';
@@ -756,6 +896,7 @@
 
   renderMarkers();
   renderDetail();
+  renderUnplaced();
 })();
 </script>
 {% endblock %}

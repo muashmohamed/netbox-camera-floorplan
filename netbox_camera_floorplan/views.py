@@ -64,47 +64,6 @@ class FloorPlanListView(generic.ObjectListView):
     filterset_form = forms.FloorPlanFilterForm
 
 
-class CCTVFloorPlanListView(generic.ObjectListView):
-    """
-    A separate, read-only list of every floor plan, for restricted
-    security staff access — deliberately gated on a dedicated custom
-    permission, NOT the standard view_floorplan permission the main
-    list uses. Granting a user only this permission gives them this
-    page (and the read-only camera-only canvas it links to) without
-    unlocking the full editable Device Floor Plans section at all.
-
-    IMPORTANT: setting permission_required as a plain class attribute
-    here did NOT work — confirmed via live testing that NetBox's
-    generic.ObjectListView silently ignores it and auto-derives the
-    required permission from the model instead (view_floorplan), so a
-    user with only the custom CCTV permission got denied, while a user
-    additionally granted view_floorplan could get in — meaning the
-    custom permission was never actually the thing being checked.
-    Overriding get_required_permission() (the method NetBox's generic
-    views actually call to determine this, rather than reading a class
-    attribute) is the fix.
-
-    The permission string itself is "view_cctv_floorplan_floorplan",
-    not a typo — NetBox's own permission system appends "_floorplan"
-    (the model name) onto a custom action's codename when storing an
-    ObjectPermission's selection, then appends it AGAIN when
-    constructing the actual has_perm()-checkable string. This happens
-    regardless of what the codename is named (confirmed by testing two
-    different codenames and observing the same doubled result both
-    times). The custom permission itself is declared with codename
-    "view_cctv" in models.py's Meta.permissions.
-    """
-
-    queryset = FloorPlan.objects.prefetch_related("cameras__device")
-    table = tables.CCTVFloorPlanTable
-    filterset = filtersets.FloorPlanFilterSet
-    filterset_form = forms.FloorPlanFilterForm
-    template_name = "netbox_camera_floorplan/cctv_floorplan_list.html"
-
-    def get_required_permission(self):
-        return "netbox_camera_floorplan.view_cctv_floorplan_floorplan"
-
-
 class FloorPlanEditView(generic.ObjectEditView):
     queryset = FloorPlan.objects.all()
     form = forms.FloorPlanForm
@@ -149,48 +108,24 @@ class CameraPlacementChangeLogView(generic.ObjectChangeLogView):
     queryset = CameraPlacement.objects.all()
 
 
+class CameraPlacementBulkImportView(generic.BulkImportView):
+    """
+    CSV bulk import for devices — cameras, NVRs, APs, etc. Deliberately
+    excludes x_pct/y_pct: canvas placement (dragging/clicking a marker
+    onto the floor plan image) stays a manual step, so an imported row
+    shows up as "unplaced" until someone does that. NVR/channel
+    assignment, on the other hand, is fully set from the CSV, since
+    that's exactly the repetitive step this feature exists to avoid.
+    """
+
+    queryset = CameraPlacement.objects.all()
+    model_form = forms.CameraPlacementImportForm
+    table = tables.CameraPlacementTable
+
+
 # ---------------------------------------------------------------------------
 # The interactive floor plan canvas — the main screen technicians/engineers use
 # ---------------------------------------------------------------------------
-
-def _build_camera_data(cameras_qs):
-    """
-    Shared serialization logic for the floor plan canvas JSON — used by
-    both the full editable view and the CCTV-only read-only view, so
-    they can never drift out of sync with each other.
-    """
-    camera_data = []
-    for cam in cameras_qs:
-        uplinks = cam.get_uplink_terminations()
-        power = cam.get_power_terminations()
-        primary_ip = cam.device.primary_ip4
-        camera_data.append({
-            "id": cam.pk,
-            "device_id": cam.device.pk,
-            "device_name": cam.device.name,
-            "device_url": cam.device.get_absolute_url(),
-            "ip_address": str(primary_ip.address.ip) if primary_ip else None,
-            "camera_type_id": cam.camera_type_id,
-            "x_pct": float(cam.x_pct),
-            "y_pct": float(cam.y_pct),
-            "direction_degrees": cam.direction_degrees,
-            "power_source_override": cam.power_source_override,
-            "notes": cam.notes,
-            "reachability": cam.get_reachability(),
-            "uplinks": [
-                {
-                    "local_interface": str(local_if),
-                    "remote_device": str(remote_dev) if remote_dev else None,
-                    "remote_interface": str(remote_if),
-                }
-                for local_if, remote_dev, remote_if in uplinks
-            ],
-            "power_terminations": [
-                {"port": str(p), "remote": str(r)} for p, r in power
-            ],
-        })
-    return camera_data
-
 
 class FloorPlanCanvasView(PermissionRequiredMixin, View):
     """
@@ -204,8 +139,49 @@ class FloorPlanCanvasView(PermissionRequiredMixin, View):
 
     def get(self, request, pk):
         floorplan = get_object_or_404(FloorPlan, pk=pk)
-        cameras = floorplan.cameras.select_related("device", "device__primary_ip4", "camera_type").all()
-        camera_data = _build_camera_data(cameras)
+        cameras = floorplan.cameras.select_related(
+            "device", "device__primary_ip4", "camera_type", "connected_nvr__device"
+        ).all()
+
+        camera_data = []
+        unplaced_data = []
+        for cam in cameras:
+            uplinks = cam.get_uplink_terminations()
+            power = cam.get_power_terminations()
+            primary_ip = cam.device.primary_ip4
+            entry = {
+                "id": cam.pk,
+                "device_id": cam.device.pk,
+                "device_name": cam.device.name,
+                "device_url": cam.device.get_absolute_url(),
+                "ip_address": str(primary_ip.address.ip) if primary_ip else None,
+                "camera_type_id": cam.camera_type_id,
+                "x_pct": float(cam.x_pct) if cam.is_placed else None,
+                "y_pct": float(cam.y_pct) if cam.is_placed else None,
+                "direction_degrees": cam.direction_degrees,
+                "power_source_override": cam.power_source_override,
+                "notes": cam.notes,
+                "reachability": cam.get_reachability(),
+                "connected_nvr_id": cam.connected_nvr_id,
+                "nvr_channel": cam.nvr_channel,
+                "channel_label": cam.get_channel_label(),
+                "nvr_channel_usage": cam.get_nvr_channel_usage(),
+                "uplinks": [
+                    {
+                        "local_interface": str(local_if),
+                        "remote_device": str(remote_dev) if remote_dev else None,
+                        "remote_interface": str(remote_if),
+                    }
+                    for local_if, remote_dev, remote_if in uplinks
+                ],
+                "power_terminations": [
+                    {"port": str(p), "remote": str(r)} for p, r in power
+                ],
+            }
+            if cam.is_placed:
+                camera_data.append(entry)
+            else:
+                unplaced_data.append(entry)
 
         camera_types = [
             {
@@ -216,8 +192,30 @@ class FloorPlanCanvasView(PermissionRequiredMixin, View):
                 "fov_degrees": ct.fov_degrees,
                 "category": ct.category,
                 "is_camera": ct.is_camera,
+                "is_nvr": ct.is_nvr,
+                "channel_capacity": ct.channel_capacity,
             }
             for ct in CameraType.objects.all()
+        ]
+
+        # Every placed NVR across ALL floor plans, not just this one — an
+        # NVR is often in a different room/rack than the cameras feeding
+        # into it, so a camera here needs to be able to point at an NVR
+        # placed elsewhere.
+        nvr_placements = (
+            CameraPlacement.objects.filter(camera_type__category=CameraType.CATEGORY_NVR)
+            .select_related("device", "camera_type", "floorplan")
+        )
+        nvr_data = [
+            {
+                "id": nvr.pk,
+                "device_name": nvr.device.name,
+                "floorplan_id": nvr.floorplan_id,
+                "floorplan_name": str(nvr.floorplan),
+                "capacity": nvr.camera_type.channel_capacity if nvr.camera_type else None,
+                "usage": nvr.get_nvr_channel_usage(),
+            }
+            for nvr in nvr_placements
         ]
 
         can_edit = request.user.has_perm("netbox_camera_floorplan.add_cameraplacement")
@@ -226,56 +224,10 @@ class FloorPlanCanvasView(PermissionRequiredMixin, View):
             "object": floorplan,
             "floorplan": floorplan,
             "cameras_json": json.dumps(camera_data),
+            "unplaced_json": json.dumps(unplaced_data),
             "camera_types_json": json.dumps(camera_types),
+            "nvrs_json": json.dumps(nvr_data),
             "can_edit": can_edit,
-        })
-
-
-class CCTVFloorPlanCanvasView(PermissionRequiredMixin, View):
-    """
-    Read-only, camera-only view of a floor plan for restricted security
-    staff. Two guarantees this view exists specifically to provide, that
-    the main FloorPlanCanvasView above does not:
-
-    1. Only camera-category placements are ever included — switches,
-       APs, UPS, etc. never appear here, not even in aggregate. A
-       placement with no Device Type set at all is excluded too, since
-       it can't be confirmed to actually be a camera.
-    2. can_edit is hardcoded False, unconditionally — never derived from
-       the requesting user's other permissions. Even a full admin
-       viewing this specific URL sees a strictly read-only page; the
-       whole point of this view is a guaranteed-safe surface to grant to
-       an audience narrower than full Device Floor Plan access.
-    """
-
-    permission_required = "netbox_camera_floorplan.view_cctv_floorplan_floorplan"
-
-    def get(self, request, pk):
-        floorplan = get_object_or_404(FloorPlan, pk=pk)
-        cameras = floorplan.get_camera_placements().select_related(
-            "device", "device__primary_ip4", "camera_type"
-        )
-        camera_data = _build_camera_data(cameras)
-
-        camera_types = [
-            {
-                "id": ct.pk,
-                "name": ct.name,
-                "color": ct.color,
-                "icon_url": ct.get_icon_url(),
-                "fov_degrees": ct.fov_degrees,
-                "category": ct.category,
-                "is_camera": ct.is_camera,
-            }
-            for ct in CameraType.objects.filter(category=CameraType.CATEGORY_CAMERA)
-        ]
-
-        return render(request, "netbox_camera_floorplan/floorplan_canvas.html", {
-            "object": floorplan,
-            "floorplan": floorplan,
-            "cameras_json": json.dumps(camera_data),
-            "camera_types_json": json.dumps(camera_types),
-            "can_edit": False,
         })
 
 
@@ -302,22 +254,31 @@ class CameraPlacementSaveView(PermissionRequiredMixin, View):
         y_pct = payload.get("y_pct")
         direction = payload.get("direction_degrees", 0)
 
-        if x_pct is None or y_pct is None or device_id is None:
-            return JsonResponse({"error": "device_id, x_pct and y_pct are required."}, status=400)
+        if device_id is None:
+            return JsonResponse({"error": "device_id is required."}, status=400)
 
-        # Raw click coordinates from the browser (pixel math) commonly have
-        # far more precision than the model's DecimalField(decimal_places=3)
-        # allows. Rounding a float and handing it straight to the model
-        # isn't enough — Django converts floats to Decimal by preserving
-        # their exact binary representation (e.g. 34.568 becomes something
-        # like Decimal('34.5680000000000003944...')), which still fails the
-        # decimal_places check. Building the Decimal from a formatted
-        # string instead avoids that entirely.
-        try:
-            x_pct = Decimal(f"{float(x_pct):.3f}")
-            y_pct = Decimal(f"{float(y_pct):.3f}")
-        except (TypeError, ValueError, InvalidOperation):
-            return JsonResponse({"error": "x_pct and y_pct must be numbers."}, status=400)
+        # x_pct/y_pct are omitted when placing a marker for the first time
+        # via the "Unplaced devices" list click flow below (the device
+        # already exists as a CameraPlacement from a CSV import; only its
+        # position is being set now) — both must be provided together, or
+        # both left out entirely.
+        if (x_pct is None) != (y_pct is None):
+            return JsonResponse({"error": "x_pct and y_pct must be provided together."}, status=400)
+
+        if x_pct is not None:
+            # Raw click coordinates from the browser (pixel math) commonly have
+            # far more precision than the model's DecimalField(decimal_places=3)
+            # allows. Rounding a float and handing it straight to the model
+            # isn't enough — Django converts floats to Decimal by preserving
+            # their exact binary representation (e.g. 34.568 becomes something
+            # like Decimal('34.5680000000000003944...')), which still fails the
+            # decimal_places check. Building the Decimal from a formatted
+            # string instead avoids that entirely.
+            try:
+                x_pct = Decimal(f"{float(x_pct):.3f}")
+                y_pct = Decimal(f"{float(y_pct):.3f}")
+            except (TypeError, ValueError, InvalidOperation):
+                return JsonResponse({"error": "x_pct and y_pct must be numbers."}, status=400)
 
         device = get_object_or_404(Device, pk=device_id)
 
@@ -325,6 +286,12 @@ class CameraPlacementSaveView(PermissionRequiredMixin, View):
         camera_type = None
         if camera_type_id:
             camera_type = get_object_or_404(CameraType, pk=camera_type_id)
+
+        connected_nvr_id = payload.get("connected_nvr_id")
+        connected_nvr = None
+        if connected_nvr_id:
+            connected_nvr = get_object_or_404(CameraPlacement, pk=connected_nvr_id)
+        nvr_channel = payload.get("nvr_channel") or None
 
         def build_error_response(exc):
             """
@@ -367,17 +334,29 @@ class CameraPlacementSaveView(PermissionRequiredMixin, View):
             placement.device = device
             if "camera_type_id" in payload:
                 placement.camera_type = camera_type
-            placement.x_pct = x_pct
-            placement.y_pct = y_pct
+            # Only touch position if this call actually provided it — this
+            # is what lets clicking an "unplaced" device onto the canvas
+            # set its position via this same endpoint, without every other
+            # detail-panel save (type change, notes, NVR assignment, etc.)
+            # having to resend x/y for an already-placed marker.
+            if x_pct is not None:
+                placement.x_pct = x_pct
+                placement.y_pct = y_pct
             placement.direction_degrees = direction
             placement.power_source_override = payload.get("power_source_override", placement.power_source_override)
             placement.notes = payload.get("notes", placement.notes)
+            if "connected_nvr_id" in payload:
+                placement.connected_nvr = connected_nvr
+            if "nvr_channel" in payload:
+                placement.nvr_channel = nvr_channel
             try:
                 placement.full_clean()
                 placement.save()
             except (IntegrityError, ValidationError) as e:
                 return build_error_response(e)
         else:
+            if x_pct is None:
+                return JsonResponse({"error": "x_pct and y_pct are required when placing a new marker."}, status=400)
             try:
                 placement = CameraPlacement(
                     floorplan=floorplan,
@@ -388,6 +367,8 @@ class CameraPlacementSaveView(PermissionRequiredMixin, View):
                     direction_degrees=direction,
                     power_source_override=payload.get("power_source_override", ""),
                     notes=payload.get("notes", ""),
+                    connected_nvr=connected_nvr,
+                    nvr_channel=nvr_channel,
                 )
                 placement.full_clean()
                 placement.save()

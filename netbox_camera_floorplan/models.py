@@ -37,25 +37,6 @@ class FloorPlan(NetBoxModel):
         ordering = ["site__name", "location__name", "name"]
         verbose_name = "Device Floor Plan"
         verbose_name_plural = "Device Floor Plans"
-        permissions = [
-            (
-                # Deliberately NOT "view_cctv_floorplan" — NetBox's own
-                # permission system automatically appends "_floorplan"
-                # (the model name) onto whatever action name is stored
-                # here when constructing the actual Django permission
-                # string checked at request time. Naming this codename
-                # with the model-name suffix already included caused a
-                # DOUBLED suffix ("view_cctv_floorplan_floorplan"),
-                # which never matched what views.py's permission_required
-                # actually checks for ("netbox_camera_floorplan.
-                # view_cctv_floorplan") — confirmed by directly
-                # inspecting user.get_all_permissions() and seeing the
-                # doubled string. Dropping the suffix here lets NetBox's
-                # automatic appending produce the correct final string.
-                "view_cctv",
-                "Can view read-only CCTV camera floor plans",
-            ),
-        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["site", "location", "name"],
@@ -88,28 +69,6 @@ class FloorPlan(NetBoxModel):
         """
         counts = {"total": 0, "reachable": 0, "unreachable": 0, "no_ip": 0, "no_data": 0}
         for placement in self.cameras.all():
-            counts["total"] += 1
-            counts[placement.get_reachability_status()] += 1
-        return counts
-
-    def get_camera_placements(self):
-        """
-        Placements whose Device Type is confirmed camera-category —
-        used by the restricted, read-only CCTV floor plan view so that
-        no other device type (switches, APs, UPS...) is ever included,
-        even in aggregate counts. A placement with no Device Type set at
-        all is deliberately excluded here too, since it can't be
-        confirmed to actually be a camera.
-        """
-        return self.cameras.filter(camera_type__category=CameraType.CATEGORY_CAMERA)
-
-    def get_camera_count(self):
-        return self.get_camera_placements().count()
-
-    def get_camera_reachability_summary(self):
-        """Same shape as get_reachability_summary(), scoped to cameras only."""
-        counts = {"total": 0, "reachable": 0, "unreachable": 0, "no_ip": 0, "no_data": 0}
-        for placement in self.get_camera_placements():
             counts["total"] += 1
             counts[placement.get_reachability_status()] += 1
         return counts
@@ -240,6 +199,31 @@ class CameraType(NetBoxModel):
     )
     description = models.CharField(max_length=200, blank=True)
 
+    CHANNELS_8 = 8
+    CHANNELS_16 = 16
+    CHANNELS_32 = 32
+    CHANNELS_64 = 64
+    CHANNELS_128 = 128
+    CHANNEL_CAPACITY_CHOICES = [
+        (CHANNELS_8, "8 channels"),
+        (CHANNELS_16, "16 channels"),
+        (CHANNELS_32, "32 channels"),
+        (CHANNELS_64, "64 channels"),
+        (CHANNELS_128, "128 channels"),
+    ]
+    channel_capacity = models.PositiveSmallIntegerField(
+        choices=CHANNEL_CAPACITY_CHOICES,
+        null=True,
+        blank=True,
+        verbose_name="channel capacity",
+        help_text=(
+            "NVR only — ignored for every other category. The maximum "
+            "number of cameras this NVR model can connect (e.g. a "
+            "'32-channel NVR' accepts up to 32 cameras, each assigned "
+            "its own channel D1-D32)."
+        ),
+    )
+
     class Meta:
         ordering = ["name"]
         verbose_name = "Device Type"
@@ -248,6 +232,10 @@ class CameraType(NetBoxModel):
     @property
     def is_camera(self):
         return self.category == self.CATEGORY_CAMERA
+
+    @property
+    def is_nvr(self):
+        return self.category == self.CATEGORY_NVR
 
     def __str__(self):
         return self.name
@@ -310,14 +298,23 @@ class CameraPlacement(NetBoxModel):
     x_pct = models.DecimalField(
         max_digits=6,
         decimal_places=3,
+        null=True,
+        blank=True,
         validators=[MinValueValidator(0), MaxValueValidator(100)],
-        help_text="Horizontal position as a percentage of image width (0-100).",
+        help_text=(
+            "Horizontal position as a percentage of image width (0-100). "
+            "Left blank for a device added via CSV import — it appears in "
+            "the floor plan's \"Unplaced devices\" list until someone "
+            "manually clicks it onto the canvas."
+        ),
     )
     y_pct = models.DecimalField(
         max_digits=6,
         decimal_places=3,
+        null=True,
+        blank=True,
         validators=[MinValueValidator(0), MaxValueValidator(100)],
-        help_text="Vertical position as a percentage of image height (0-100).",
+        help_text="Vertical position as a percentage of image height (0-100). Left blank until manually placed.",
     )
     direction_degrees = models.PositiveSmallIntegerField(
         default=0,
@@ -338,6 +335,25 @@ class CameraPlacement(NetBoxModel):
         ),
     )
     notes = models.TextField(blank=True)
+    connected_nvr = models.ForeignKey(
+        to="self",
+        on_delete=models.SET_NULL,
+        related_name="connected_cameras",
+        null=True,
+        blank=True,
+        verbose_name="connected NVR",
+        help_text=(
+            "The NVR (Device Type category = NVR) this camera feeds into. "
+            "Only already-placed NVRs can be selected — place the NVR "
+            "itself first."
+        ),
+    )
+    nvr_channel = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="NVR channel",
+        help_text="Channel number on the connected NVR (1 = D1, 2 = D2, etc.).",
+    )
 
     class Meta:
         ordering = ["floorplan__site__name", "floorplan__location__name", "floorplan__name", "device__name"]
@@ -347,7 +363,12 @@ class CameraPlacement(NetBoxModel):
             models.UniqueConstraint(
                 fields=["device"],
                 name="unique_device_placement",
-            )
+            ),
+            models.UniqueConstraint(
+                fields=["connected_nvr", "nvr_channel"],
+                condition=models.Q(connected_nvr__isnull=False),
+                name="unique_nvr_channel_assignment",
+            ),
         ]
 
     def __str__(self):
@@ -355,6 +376,64 @@ class CameraPlacement(NetBoxModel):
 
     def get_absolute_url(self):
         return reverse("plugins:netbox_camera_floorplan:floorplan", args=[self.floorplan.pk])
+
+    @property
+    def is_placed(self):
+        """
+        False for a device added via CSV import that hasn't been dragged
+        onto the canvas yet — it exists (floor plan, device, NVR/channel
+        assignment all already set) but has no x/y position.
+        """
+        return self.x_pct is not None and self.y_pct is not None
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        super().clean()
+        errors = {}
+
+        if self.connected_nvr_id and self.pk and self.connected_nvr_id == self.pk:
+            errors["connected_nvr"] = "A device cannot be connected to itself as its NVR."
+
+        if self.connected_nvr_id:
+            nvr_type = getattr(self.connected_nvr, "camera_type", None)
+            if not nvr_type or not nvr_type.is_nvr:
+                errors["connected_nvr"] = (
+                    "The selected device isn't an NVR (its Device Type's category must be \"NVR\")."
+                )
+            if self.nvr_channel is None:
+                errors.setdefault("nvr_channel", "A channel number is required when connecting to an NVR.")
+            elif nvr_type and nvr_type.channel_capacity and self.nvr_channel > nvr_type.channel_capacity:
+                errors["nvr_channel"] = (
+                    f"Channel {self.nvr_channel} exceeds this NVR's capacity "
+                    f"({nvr_type.channel_capacity} channels, D1-D{nvr_type.channel_capacity})."
+                )
+            elif self.nvr_channel is not None and self.nvr_channel < 1:
+                errors["nvr_channel"] = "Channel number must be 1 or greater."
+        elif self.nvr_channel is not None:
+            errors["nvr_channel"] = "A channel number requires a connected NVR to also be set."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def get_channel_label(self):
+        """Returns e.g. "D5" for nvr_channel=5, or None if unset."""
+        if self.nvr_channel is None:
+            return None
+        return f"D{self.nvr_channel}"
+
+    def get_nvr_channel_usage(self):
+        """
+        For a placement whose own Device Type category is NVR: how many
+        of its channels are currently claimed by cameras pointing at it,
+        out of its total capacity. Returns None if this placement isn't
+        an NVR or has no capacity configured.
+        """
+        if not self.camera_type or not self.camera_type.is_nvr or not self.camera_type.channel_capacity:
+            return None
+        capacity = self.camera_type.channel_capacity
+        used = self.connected_cameras.count()
+        return {"used": used, "capacity": capacity, "available": max(capacity - used, 0)}
 
     # ---- Live lookups against NetBox's own connection data ----
 

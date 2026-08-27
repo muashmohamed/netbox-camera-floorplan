@@ -13,7 +13,7 @@ class CameraTypeSerializer(NetBoxModelSerializer):
         model = CameraType
         fields = [
             "id", "url", "display", "name", "slug", "category", "preset_icon",
-            "icon_image", "color", "fov_degrees", "description", "tags",
+            "icon_image", "color", "fov_degrees", "channel_capacity", "description", "tags",
             "custom_fields", "created", "last_updated",
         ]
         brief_fields = ["id", "url", "display", "name"]
@@ -43,6 +43,7 @@ class CameraPlacementSerializer(NetBoxModelSerializer):
         fields = [
             "id", "url", "display", "floorplan", "device", "camera_type",
             "x_pct", "y_pct", "direction_degrees", "power_source_override",
-            "notes", "tags", "custom_fields", "created", "last_updated",
+            "connected_nvr", "nvr_channel", "notes", "tags", "custom_fields",
+            "created", "last_updated",
         ]
         brief_fields = ["id", "url", "display", "device"]

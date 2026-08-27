@@ -5,8 +5,8 @@ from django.core.files.uploadedfile import InMemoryUploadedFile
 from PIL import Image
 
 from dcim.models import Device, Location, Site, SiteGroup
-from netbox.forms import NetBoxModelFilterSetForm, NetBoxModelForm
-from utilities.forms.fields import DynamicModelChoiceField, DynamicModelMultipleChoiceField
+from netbox.forms import NetBoxModelFilterSetForm, NetBoxModelForm, NetBoxModelImportForm
+from utilities.forms.fields import CSVModelChoiceField, DynamicModelChoiceField, DynamicModelMultipleChoiceField
 
 from .models import CameraPlacement, CameraType, FloorPlan
 
@@ -14,7 +14,7 @@ from .models import CameraPlacement, CameraType, FloorPlan
 class CameraTypeForm(NetBoxModelForm):
     class Meta:
         model = CameraType
-        fields = ["name", "slug", "category", "preset_icon", "icon_image", "color", "fov_degrees", "description", "tags"]
+        fields = ["name", "slug", "category", "preset_icon", "icon_image", "color", "fov_degrees", "channel_capacity", "description", "tags"]
         widgets = {
             "color": forms.TextInput(attrs={"type": "color", "class": "form-control form-control-color"}),
         }
@@ -227,3 +227,90 @@ class CameraPlacementFilterForm(NetBoxModelFilterSetForm):
         label="Floor Plan",
         query_params={"site_id": "$site_id", "location_id": "$location_id"},
     )
+
+
+class CameraPlacementImportForm(NetBoxModelImportForm):
+    """
+    Bulk CSV import for devices (cameras, NVRs, APs, etc.) — deliberately
+    does NOT accept x_pct/y_pct: canvas placement stays a manual,
+    click-to-place step. A row imported here shows up in that floor
+    plan's "Unplaced devices" list until someone drags/clicks it onto
+    the actual image.
+
+    Both `device` and `connected_nvr` are resolved against real NetBox
+    devices by name — never free text — consistent with how every other
+    device lookup in this plugin works. `connected_nvr` is a two-hop
+    lookup: the CSV cell holds the NVR's own device name, which is
+    resolved here to the CameraPlacement wrapping that device (the
+    actual target of the connected_nvr FK).
+
+    Column order matters for combined imports: if an NVR and the cameras
+    that reference it are in the same CSV, the NVR's row must come
+    before its cameras' rows, since connected_nvr can only resolve to an
+    NVR that already has a placement (either from an earlier row in
+    this same file, or one placed earlier through the canvas).
+    """
+
+    device = CSVModelChoiceField(
+        queryset=Device.objects.all(),
+        to_field_name="name",
+        help_text="Name of the existing NetBox device (must be unique — disambiguate by renaming if two sites share a device name).",
+    )
+    camera_type = CSVModelChoiceField(
+        queryset=CameraType.objects.all(),
+        to_field_name="name",
+        required=False,
+        label="Device type",
+        help_text="Name of an existing Device Type (Plugins → Device Types).",
+    )
+    floorplan = forms.CharField(
+        help_text='Which floor plan this device belongs to, formatted exactly as it appears in the UI: "Site / Name" or "Site / Location / Name".',
+    )
+    connected_nvr = forms.CharField(
+        required=False,
+        label="Connected NVR",
+        help_text="Device name of an already-placed NVR (leave blank if this row isn't a camera, or has no NVR yet).",
+    )
+
+    class Meta:
+        model = CameraPlacement
+        fields = [
+            "device", "camera_type", "floorplan", "connected_nvr", "nvr_channel",
+            "power_source_override", "notes", "tags",
+        ]
+
+    def clean_floorplan(self):
+        raw = self.cleaned_data["floorplan"].strip()
+        parts = [p.strip() for p in raw.split("/")]
+        if len(parts) == 2:
+            site_name, name = parts
+            location_name = None
+        elif len(parts) == 3:
+            site_name, location_name, name = parts
+        else:
+            raise forms.ValidationError(
+                'Expected "Site / Name" or "Site / Location / Name" — got: ' + raw
+            )
+
+        qs = FloorPlan.objects.filter(site__name=site_name, name=name)
+        qs = qs.filter(location__name=location_name) if location_name else qs.filter(location__isnull=True)
+        floorplan = qs.first()
+        if not floorplan:
+            raise forms.ValidationError(f'No floor plan matches "{raw}".')
+        return floorplan
+
+    def clean_connected_nvr(self):
+        raw = self.cleaned_data.get("connected_nvr", "").strip()
+        if not raw:
+            return None
+        placement = (
+            CameraPlacement.objects.filter(device__name=raw, camera_type__category=CameraType.CATEGORY_NVR)
+            .select_related("camera_type")
+            .first()
+        )
+        if not placement:
+            raise forms.ValidationError(
+                f'"{raw}" isn\'t an already-placed NVR. Place the NVR itself first '
+                f"(or, in this same CSV, put its row before any camera that references it)."
+            )
+        return placement

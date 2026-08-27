@@ -74,7 +74,7 @@ class CameraPlacementFilterSet(NetBoxModelFilterSet):
 
     class Meta:
         model = CameraPlacement
-        fields = ("id", "floorplan", "device", "camera_type")
+        fields = ("id", "floorplan", "device", "camera_type", "connected_nvr")
 
     def search(self, queryset, name, value):
         if not value.strip():
