@@ -231,7 +231,7 @@ class CameraPlacementFilterForm(NetBoxModelFilterSetForm):
         required=False,
         label="Placed on canvas",
         widget=forms.Select(
-            choices=[("", "---------"), ("true", "Placed"), ("false", "Unplaced — needs canvas click")],
+            choices=[("", "---------"), ("true", "Placed"), ("false", "Unplaced")],
         ),
     )
 
