@@ -73,16 +73,25 @@ class CCTVFloorPlanListView(generic.ObjectListView):
     page (and the read-only camera-only canvas it links to) without
     unlocking the full editable Device Floor Plans section at all.
 
-    permission_required below is "view_cctv_floorplan_floorplan", not a
-    typo — NetBox's own permission system appends "_floorplan" (the
-    model name) onto a custom action's codename when storing an
+    IMPORTANT: setting permission_required as a plain class attribute
+    here did NOT work — confirmed via live testing that NetBox's
+    generic.ObjectListView silently ignores it and auto-derives the
+    required permission from the model instead (view_floorplan), so a
+    user with only the custom CCTV permission got denied, while a user
+    additionally granted view_floorplan could get in — meaning the
+    custom permission was never actually the thing being checked.
+    Overriding get_required_permission() (the method NetBox's generic
+    views actually call to determine this, rather than reading a class
+    attribute) is the fix.
+
+    The permission string itself is "view_cctv_floorplan_floorplan",
+    not a typo — NetBox's own permission system appends "_floorplan"
+    (the model name) onto a custom action's codename when storing an
     ObjectPermission's selection, then appends it AGAIN when
     constructing the actual has_perm()-checkable string. This happens
     regardless of what the codename is named (confirmed by testing two
     different codenames and observing the same doubled result both
-    times), so this checks the string NetBox actually produces rather
-    than the single-suffixed string that seemed like it should be
-    correct. The custom permission itself is declared with codename
+    times). The custom permission itself is declared with codename
     "view_cctv" in models.py's Meta.permissions.
     """
 
@@ -90,8 +99,10 @@ class CCTVFloorPlanListView(generic.ObjectListView):
     table = tables.CCTVFloorPlanTable
     filterset = filtersets.FloorPlanFilterSet
     filterset_form = forms.FloorPlanFilterForm
-    permission_required = "netbox_camera_floorplan.view_cctv_floorplan_floorplan"
     template_name = "netbox_camera_floorplan/cctv_floorplan_list.html"
+
+    def get_required_permission(self):
+        return "netbox_camera_floorplan.view_cctv_floorplan_floorplan"
 
 
 class FloorPlanEditView(generic.ObjectEditView):
