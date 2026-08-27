@@ -97,20 +97,21 @@
   </div>
 </div>
 
-<!-- Delete-confirm modal: replaces window.confirm() -->
+<!-- Unplace-confirm modal: replaces window.confirm() -->
 <div class="modal fade" id="cfp-delete-modal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">Delete device marker?</h5>
+        <h5 class="modal-title">Remove from canvas?</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <p>This removes the marker from the floor plan only — it does not delete the device itself.</p>
+        <p>This removes the marker's position and moves it to this floor plan's "Unplaced devices" list. Its device type, connected NVR, channel, and notes are all kept — nothing is deleted.</p>
+        <p class="text-muted small mb-0">To permanently delete this placement instead, use the trash icon on the Device Placements list.</p>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-danger" id="cfp-confirm-delete">Delete marker</button>
+        <button type="button" class="btn btn-warning" id="cfp-confirm-delete">Remove from canvas</button>
       </div>
     </div>
   </div>
@@ -609,7 +610,7 @@
         <button class="btn btn-sm btn-outline-secondary w-100 mb-1" id="cfp-move-btn">
           ${movingCameraId === cam.id ? 'Click the floor plan to drop it here' : 'Move location'}
         </button>
-        <button class="btn btn-sm btn-outline-danger w-100" id="cfp-delete-btn">Delete marker</button>
+        <button class="btn btn-sm btn-outline-warning w-100" id="cfp-delete-btn">Remove from canvas</button>
       ` : ''}
     `;
 
@@ -661,15 +662,22 @@
       document.getElementById('cfp-delete-btn').addEventListener('click', () => {
         getBsModal(document.getElementById('cfp-delete-modal')).show();
         document.getElementById('cfp-confirm-delete').onclick = () => {
-          fetch(`/plugins/camera-floorplan/cameras/${cam.id}/quick-delete/`, {
+          fetch(`/plugins/camera-floorplan/cameras/${cam.id}/unplace/`, {
             method: 'POST',
             headers: { 'X-CSRFToken': CSRF_TOKEN },
-          }).then(() => {
+          }).then(r => r.json()).then(data => {
+            if(data.error){ showError(data.error); return; }
             cameras = cameras.filter(c => c.id !== cam.id);
+            // Keep every other field (NVR link, channel, notes, camera
+            // type) as it was — only position is gone — so it's a real
+            // "move it later" state, not a fresh blank entry.
+            cam.x_pct = null;
+            cam.y_pct = null;
+            unplaced.push(cam);
             selectedId = null;
             getBsModal(document.getElementById('cfp-delete-modal')).hide();
-            renderMarkers(); renderDetail();
-          }).catch(() => showError('Could not delete this marker. Please try again.'));
+            renderMarkers(); renderDetail(); renderUnplaced();
+          }).catch(() => showError('Could not remove this marker. Please try again.'));
         };
       });
     }

@@ -32,5 +32,5 @@ urlpatterns = [
     path("cameras/delete/", views.CameraPlacementBulkDeleteView.as_view(), name="cameraplacement_bulk_delete"),
     path("cameras/<int:pk>/delete/", views.CameraPlacementDeleteView.as_view(), name="cameraplacement_delete"),
     path("cameras/<int:pk>/changelog/", views.CameraPlacementChangeLogView.as_view(), name="cameraplacement_changelog"),
-    path("cameras/<int:pk>/quick-delete/", views.CameraPlacementQuickDeleteView.as_view(), name="camera_quick_delete"),
+    path("cameras/<int:pk>/unplace/", views.CameraPlacementUnplaceView.as_view(), name="camera_unplace"),
 ]

@@ -405,13 +405,37 @@ class CameraPlacementSaveView(PermissionRequiredMixin, View):
 
 
 @method_decorator(csrf_protect, name="dispatch")
-class CameraPlacementQuickDeleteView(PermissionRequiredMixin, View):
-    permission_required = "netbox_camera_floorplan.delete_cameraplacement"
+class CameraPlacementUnplaceView(PermissionRequiredMixin, View):
+    """
+    "Remove from canvas" — clears x/y so the marker disappears from the
+    floor plan image, but keeps the CameraPlacement row itself intact
+    (device, camera type, connected NVR, channel, notes all preserved).
+    It reappears in that floor plan's "Unplaced devices" list, same as a
+    CSV-imported row that's never been placed yet.
+
+    This is deliberately NOT a delete: permission required is 'change',
+    not 'delete', since nothing is actually being removed from the
+    database — only its position. Full removal of the record is only
+    available via the row-delete action on the Device Placements list
+    (CameraPlacementDeleteView) or bulk delete, which use the standard
+    'delete' permission and NetBox's own confirmation page.
+    """
+    permission_required = "netbox_camera_floorplan.change_cameraplacement"
 
     def post(self, request, pk):
         placement = get_object_or_404(CameraPlacement, pk=pk)
-        placement.delete()
-        return JsonResponse({"status": "deleted"})
+        placement.x_pct = None
+        placement.y_pct = None
+        placement.full_clean()
+        placement.save()
+        return JsonResponse({
+            "status": "unplaced",
+            "id": placement.pk,
+            "device_id": placement.device_id,
+            "device_name": placement.device.name,
+            "device_url": placement.device.get_absolute_url(),
+            "camera_type_id": placement.camera_type_id,
+        })
 
 
 class DeviceSearchView(PermissionRequiredMixin, View):
