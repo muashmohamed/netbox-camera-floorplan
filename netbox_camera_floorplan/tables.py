@@ -145,8 +145,9 @@ class CameraPlacementTable(NetBoxTable):
         if record.is_placed:
             return format_html('<span class="badge text-bg-green">{}</span>', "Placed")
         return format_html(
-            '<span class="badge text-bg-orange" title="Needs a canvas click to set its position">{}</span>',
-            "Unplaced",
+            '<span class="badge text-bg-orange" title="Needs a canvas click to set its position">{}</span> '
+            '<a href="{}" class="btn btn-xs btn-outline-primary py-0 px-1 ms-1">Place on canvas</a>',
+            "Unplaced", record.floorplan.get_absolute_url(),
         )
 
     def render_channel(self, record):
