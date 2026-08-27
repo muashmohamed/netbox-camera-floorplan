@@ -264,6 +264,49 @@ categorized as AP/Switch/etc., edit them once to set the right category.
   coverage areas, physical security layouts) is meant to be
   restricted, not visible to every NetBox user by default.
 
+## Restricted, read-only CCTV Floor Plans (for security team access)
+
+A new, completely separate section — **CCTV Floor Plans** — for
+granting narrower access than the full editable Device Floor Plans
+section, e.g. to a security team who should be able to see camera
+coverage but never add/move/delete anything, and never see non-camera
+devices (switches, APs, UPS...) at all.
+
+**Gated on its own dedicated permission**, `view_cctv_floorplan` —
+completely decoupled from `view_floorplan`. A user granted only this
+permission sees just the "CCTV Floor Plans" nav item (the "Device
+Floor Plans" section doesn't appear for them at all, not even the
+menu item), and can't reach the editable canvas even by guessing the
+URL.
+
+**Two guarantees this specific view provides, verified by tracing
+every `can_edit`/`canEdit` check in the shared canvas template:**
+1. **Camera-only, always.** The queryset is filtered to
+   `camera_type__category = "camera"` before anything is serialized —
+   switches/APs/UPS/etc. never appear, not even in the aggregate
+   "Cameras" count or the Status badge. A placement with no Device
+   Type set is excluded too, since it can't be confirmed to be a
+   camera.
+2. **Hardcoded read-only, not permission-dependent.** `can_edit` is
+   set to `False` unconditionally in this view — never derived from
+   the requesting user's other permissions. Confirmed by tracing every
+   `can_edit`/`canEdit` reference in `floorplan_canvas.html`: the
+   click-to-place/move handler is only ever registered `if(canEdit)`,
+   every editable control (Device Type picker, Direction dial, Power
+   override, Notes, Save/Move/Delete buttons) falls back to plain
+   read-only text via a ternary, and the list page's action column has
+   zero buttons at all (`ActionsColumn(actions=())`), not just
+   permission-blocked ones. Clicking a marker to view its details still
+   works — only editing is removed.
+
+**Requires a migration** (`view_cctv_floorplan` is a custom Django
+permission, added via `Meta.permissions` on `FloorPlan`).
+
+To set this up for a security team, in **Admin → Groups**, assign only
+`netbox_camera_floorplan.view_cctv_floorplan` to their group — nothing
+else from this plugin. See "Restricting access to specific
+users/groups" above for the general permissions walkthrough.
+
 ## Restricting access to specific users/groups
 
 Every model here (`CameraType`/Device Types, `FloorPlan`, `CameraPlacement`)

@@ -37,6 +37,12 @@ class FloorPlan(NetBoxModel):
         ordering = ["site__name", "location__name", "name"]
         verbose_name = "Device Floor Plan"
         verbose_name_plural = "Device Floor Plans"
+        permissions = [
+            (
+                "view_cctv_floorplan",
+                "Can view read-only CCTV camera floor plans",
+            ),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["site", "location", "name"],
@@ -69,6 +75,28 @@ class FloorPlan(NetBoxModel):
         """
         counts = {"total": 0, "reachable": 0, "unreachable": 0, "no_ip": 0, "no_data": 0}
         for placement in self.cameras.all():
+            counts["total"] += 1
+            counts[placement.get_reachability_status()] += 1
+        return counts
+
+    def get_camera_placements(self):
+        """
+        Placements whose Device Type is confirmed camera-category —
+        used by the restricted, read-only CCTV floor plan view so that
+        no other device type (switches, APs, UPS...) is ever included,
+        even in aggregate counts. A placement with no Device Type set at
+        all is deliberately excluded here too, since it can't be
+        confirmed to actually be a camera.
+        """
+        return self.cameras.filter(camera_type__category=CameraType.CATEGORY_CAMERA)
+
+    def get_camera_count(self):
+        return self.get_camera_placements().count()
+
+    def get_camera_reachability_summary(self):
+        """Same shape as get_reachability_summary(), scoped to cameras only."""
+        counts = {"total": 0, "reachable": 0, "unreachable": 0, "no_ip": 0, "no_data": 0}
+        for placement in self.get_camera_placements():
             counts["total"] += 1
             counts[placement.get_reachability_status()] += 1
         return counts

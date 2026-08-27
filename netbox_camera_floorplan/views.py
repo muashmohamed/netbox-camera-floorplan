@@ -64,6 +64,25 @@ class FloorPlanListView(generic.ObjectListView):
     filterset_form = forms.FloorPlanFilterForm
 
 
+class CCTVFloorPlanListView(generic.ObjectListView):
+    """
+    A separate, read-only list of every floor plan, for restricted
+    security staff access — deliberately gated on the new
+    view_cctv_floorplan permission, NOT the standard view_floorplan
+    permission the main list uses. Granting a user only this permission
+    gives them this page (and the read-only camera-only canvas it links
+    to) without unlocking the full editable Device Floor Plans section
+    at all.
+    """
+
+    queryset = FloorPlan.objects.prefetch_related("cameras__device")
+    table = tables.CCTVFloorPlanTable
+    filterset = filtersets.FloorPlanFilterSet
+    filterset_form = forms.FloorPlanFilterForm
+    permission_required = "netbox_camera_floorplan.view_cctv_floorplan"
+    template_name = "netbox_camera_floorplan/cctv_floorplan_list.html"
+
+
 class FloorPlanEditView(generic.ObjectEditView):
     queryset = FloorPlan.objects.all()
     form = forms.FloorPlanForm
@@ -112,6 +131,45 @@ class CameraPlacementChangeLogView(generic.ObjectChangeLogView):
 # The interactive floor plan canvas — the main screen technicians/engineers use
 # ---------------------------------------------------------------------------
 
+def _build_camera_data(cameras_qs):
+    """
+    Shared serialization logic for the floor plan canvas JSON — used by
+    both the full editable view and the CCTV-only read-only view, so
+    they can never drift out of sync with each other.
+    """
+    camera_data = []
+    for cam in cameras_qs:
+        uplinks = cam.get_uplink_terminations()
+        power = cam.get_power_terminations()
+        primary_ip = cam.device.primary_ip4
+        camera_data.append({
+            "id": cam.pk,
+            "device_id": cam.device.pk,
+            "device_name": cam.device.name,
+            "device_url": cam.device.get_absolute_url(),
+            "ip_address": str(primary_ip.address.ip) if primary_ip else None,
+            "camera_type_id": cam.camera_type_id,
+            "x_pct": float(cam.x_pct),
+            "y_pct": float(cam.y_pct),
+            "direction_degrees": cam.direction_degrees,
+            "power_source_override": cam.power_source_override,
+            "notes": cam.notes,
+            "reachability": cam.get_reachability(),
+            "uplinks": [
+                {
+                    "local_interface": str(local_if),
+                    "remote_device": str(remote_dev) if remote_dev else None,
+                    "remote_interface": str(remote_if),
+                }
+                for local_if, remote_dev, remote_if in uplinks
+            ],
+            "power_terminations": [
+                {"port": str(p), "remote": str(r)} for p, r in power
+            ],
+        })
+    return camera_data
+
+
 class FloorPlanCanvasView(PermissionRequiredMixin, View):
     """
     Renders the floor plan image with existing camera markers, and provides
@@ -125,37 +183,7 @@ class FloorPlanCanvasView(PermissionRequiredMixin, View):
     def get(self, request, pk):
         floorplan = get_object_or_404(FloorPlan, pk=pk)
         cameras = floorplan.cameras.select_related("device", "device__primary_ip4", "camera_type").all()
-
-        camera_data = []
-        for cam in cameras:
-            uplinks = cam.get_uplink_terminations()
-            power = cam.get_power_terminations()
-            primary_ip = cam.device.primary_ip4
-            camera_data.append({
-                "id": cam.pk,
-                "device_id": cam.device.pk,
-                "device_name": cam.device.name,
-                "device_url": cam.device.get_absolute_url(),
-                "ip_address": str(primary_ip.address.ip) if primary_ip else None,
-                "camera_type_id": cam.camera_type_id,
-                "x_pct": float(cam.x_pct),
-                "y_pct": float(cam.y_pct),
-                "direction_degrees": cam.direction_degrees,
-                "power_source_override": cam.power_source_override,
-                "notes": cam.notes,
-                "reachability": cam.get_reachability(),
-                "uplinks": [
-                    {
-                        "local_interface": str(local_if),
-                        "remote_device": str(remote_dev) if remote_dev else None,
-                        "remote_interface": str(remote_if),
-                    }
-                    for local_if, remote_dev, remote_if in uplinks
-                ],
-                "power_terminations": [
-                    {"port": str(p), "remote": str(r)} for p, r in power
-                ],
-            })
+        camera_data = _build_camera_data(cameras)
 
         camera_types = [
             {
@@ -178,6 +206,54 @@ class FloorPlanCanvasView(PermissionRequiredMixin, View):
             "cameras_json": json.dumps(camera_data),
             "camera_types_json": json.dumps(camera_types),
             "can_edit": can_edit,
+        })
+
+
+class CCTVFloorPlanCanvasView(PermissionRequiredMixin, View):
+    """
+    Read-only, camera-only view of a floor plan for restricted security
+    staff. Two guarantees this view exists specifically to provide, that
+    the main FloorPlanCanvasView above does not:
+
+    1. Only camera-category placements are ever included — switches,
+       APs, UPS, etc. never appear here, not even in aggregate. A
+       placement with no Device Type set at all is excluded too, since
+       it can't be confirmed to actually be a camera.
+    2. can_edit is hardcoded False, unconditionally — never derived from
+       the requesting user's other permissions. Even a full admin
+       viewing this specific URL sees a strictly read-only page; the
+       whole point of this view is a guaranteed-safe surface to grant to
+       an audience narrower than full Device Floor Plan access.
+    """
+
+    permission_required = "netbox_camera_floorplan.view_cctv_floorplan"
+
+    def get(self, request, pk):
+        floorplan = get_object_or_404(FloorPlan, pk=pk)
+        cameras = floorplan.get_camera_placements().select_related(
+            "device", "device__primary_ip4", "camera_type"
+        )
+        camera_data = _build_camera_data(cameras)
+
+        camera_types = [
+            {
+                "id": ct.pk,
+                "name": ct.name,
+                "color": ct.color,
+                "icon_url": ct.get_icon_url(),
+                "fov_degrees": ct.fov_degrees,
+                "category": ct.category,
+                "is_camera": ct.is_camera,
+            }
+            for ct in CameraType.objects.filter(category=CameraType.CATEGORY_CAMERA)
+        ]
+
+        return render(request, "netbox_camera_floorplan/floorplan_canvas.html", {
+            "object": floorplan,
+            "floorplan": floorplan,
+            "cameras_json": json.dumps(camera_data),
+            "camera_types_json": json.dumps(camera_types),
+            "can_edit": False,
         })
 
 

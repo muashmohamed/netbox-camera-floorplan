@@ -26,6 +26,12 @@ urlpatterns = [
     path("floorplans/<int:pk>/", views.FloorPlanCanvasView.as_view(), name="floorplan"),
     path("floorplans/<int:pk>/save-camera/", views.CameraPlacementSaveView.as_view(), name="camera_save"),
 
+    # Restricted, read-only, camera-only view — separate permission from
+    # everything above, for granting narrower access (e.g. security team)
+    # without unlocking the full editable Device Floor Plans section.
+    path("cctv-floorplans/", views.CCTVFloorPlanListView.as_view(), name="cctv_floorplan_list"),
+    path("cctv-floorplans/<int:pk>/", views.CCTVFloorPlanCanvasView.as_view(), name="cctv_floorplan"),
+
     # CameraPlacement CRUD (mostly used from the canvas, but list view is useful too)
     path("cameras/", views.CameraPlacementListView.as_view(), name="cameraplacement_list"),
     path("cameras/<int:pk>/delete/", views.CameraPlacementDeleteView.as_view(), name="cameraplacement_delete"),
