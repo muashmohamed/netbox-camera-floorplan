@@ -307,6 +307,48 @@ To set this up for a security team, in **Admin → Groups**, assign only
 else from this plugin. See "Restricting access to specific
 users/groups" above for the general permissions walkthrough.
 
+### Bug found and fixed: custom permission codename double-suffixing
+
+While actually testing this with a real restricted user (not just
+reading the code), the permission was assigned exactly correctly in
+NetBox's admin UI, yet the user still got "You do not have permission"
+on the very page that permission should have granted. Diagnosed via
+`user.get_all_permissions()` directly in the Django shell, which
+revealed the real permission string NetBox had constructed:
+
+```
+netbox_camera_floorplan.view_cctv_floorplan_floorplan
+```
+
+A doubled `_floorplan` suffix. NetBox's own permission system
+automatically appends `_{model_name}` onto whatever action name is
+stored, when constructing the actual string checked at request time.
+The original codename, `view_cctv_floorplan`, already ended in
+`_floorplan` (chosen to read naturally, following Django's usual
+`{action}_{modelname}` convention) — NetBox appended the suffix again
+on top, producing a string that never matched what the view's
+`permission_required` actually checked for.
+
+**Fixed** by renaming the codename to `view_cctv` (dropping the
+redundant model-name suffix) — NetBox's automatic suffixing now
+correctly produces `view_cctv` + `_floorplan` = `view_cctv_floorplan`,
+matching the view's check exactly. No changes needed in `views.py`,
+since it was already checking for the correct final string all along.
+
+**If you already created a permission using the old codename**, after
+applying this fix you'll need to:
+1. Apply the new migration (creates the new, correctly-wired
+   `view_cctv` permission — the old `view_cctv_floorplan` permission
+   row is not automatically removed from the database).
+2. Edit your existing CCTV-access permission in NetBox's admin,
+   uncheck the old action checkbox, check the new one (same
+   description text, so look for whichever one is newly available),
+   and save.
+3. Optionally clean up the orphaned old permission row:
+   ```
+   python manage.py shell -c "from django.contrib.auth.models import Permission; Permission.objects.filter(codename='view_cctv_floorplan').delete()"
+   ```
+
 ## Restricting access to specific users/groups
 
 Every model here (`CameraType`/Device Types, `FloorPlan`, `CameraPlacement`)

@@ -39,7 +39,20 @@ class FloorPlan(NetBoxModel):
         verbose_name_plural = "Device Floor Plans"
         permissions = [
             (
-                "view_cctv_floorplan",
+                # Deliberately NOT "view_cctv_floorplan" — NetBox's own
+                # permission system automatically appends "_floorplan"
+                # (the model name) onto whatever action name is stored
+                # here when constructing the actual Django permission
+                # string checked at request time. Naming this codename
+                # with the model-name suffix already included caused a
+                # DOUBLED suffix ("view_cctv_floorplan_floorplan"),
+                # which never matched what views.py's permission_required
+                # actually checks for ("netbox_camera_floorplan.
+                # view_cctv_floorplan") — confirmed by directly
+                # inspecting user.get_all_permissions() and seeing the
+                # doubled string. Dropping the suffix here lets NetBox's
+                # automatic appending produce the correct final string.
+                "view_cctv",
                 "Can view read-only CCTV camera floor plans",
             ),
         ]
