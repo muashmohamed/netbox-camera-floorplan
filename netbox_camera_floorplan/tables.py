@@ -166,4 +166,12 @@ class CameraPlacementTable(NetBoxTable):
         return "—"
 
     def render_channel(self, record):
+        if record.camera_type and record.camera_type.is_nvr:
+            usage = record.get_nvr_channel_usage()
+            if usage:
+                return format_html(
+                    '<span title="{} of {} channels used">{}/{} used</span>',
+                    usage["used"], usage["capacity"], usage["used"], usage["capacity"],
+                )
+            return "—"  # NVR type with no channel_capacity configured
         return record.get_channel_label() or "—"

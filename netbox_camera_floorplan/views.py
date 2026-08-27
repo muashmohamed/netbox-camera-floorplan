@@ -138,7 +138,13 @@ class CameraPlacementListView(generic.ObjectListView):
 class CameraPlacementDeleteView(generic.ObjectDeleteView):
     queryset = CameraPlacement.objects.all()
 
-    def get_extra_context(self, request, instance):
+    def get(self, request, *args, **kwargs):
+        # Overriding get() directly, rather than relying on
+        # get_extra_context(), since that hook's exact invocation on the
+        # delete-confirmation page turned out uncertain in practice — this
+        # runs unconditionally before the page renders, so the warning
+        # can't silently fail to appear regardless of template internals.
+        instance = get_object_or_404(self.queryset, pk=kwargs.get("pk"))
         # connected_nvr uses on_delete=SET_NULL — deleting an NVR never
         # deletes or breaks its cameras, it just clears their NVR/channel
         # link (they'll show up flagged "Needs NVR" in the placements list
@@ -158,7 +164,7 @@ class CameraPlacementDeleteView(generic.ObjectDeleteView):
                     f"clear their NVR/channel assignment — the cameras themselves won't be "
                     f"deleted, but they'll need a new NVR assigned afterward.",
                 )
-        return super().get_extra_context(request, instance)
+        return super().get(request, *args, **kwargs)
 
 
 class CameraPlacementBulkDeleteView(generic.BulkDeleteView):
