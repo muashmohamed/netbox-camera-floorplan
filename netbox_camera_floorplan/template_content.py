@@ -158,18 +158,18 @@ class LocationFloorPlanIndicator(PluginTemplateExtension):
       var cells = row.querySelectorAll('td');
       var actionsCell = cells[cells.length - 1];
       if(!actionsCell) return;
-      // NetBox renders row actions inside a .btn-group when present —
-      // append alongside those existing buttons rather than replacing
-      // them. Falls back to the bare cell if that wrapper isn't found,
-      // so this still works even if NetBox's exact markup differs.
-      var container = actionsCell.querySelector('.btn-group') || actionsCell;
 
       var btn = document.createElement('a');
       btn.href = floorplanUrl;
-      btn.className = 'btn btn-cyan btn-sm';
+      btn.className = 'btn btn-cyan btn-sm me-1';
       btn.title = 'Open this location\\'s Camera Floor Plan';
       btn.innerHTML = '<i class="mdi mdi-floor-plan"></i>';
-      container.appendChild(btn);
+      // Inserted as its own standalone element BEFORE everything else in
+      // the actions cell (not appended into the existing .btn-group) —
+      // appending into that group made Bootstrap render it as a visually
+      // connected segment flush against the edit button, rather than the
+      // separate, distinct box it's meant to look like.
+      actionsCell.insertBefore(btn, actionsCell.firstChild);
       row.dataset.cfpFloorplanBtn = 'true';
     }});
   }}
