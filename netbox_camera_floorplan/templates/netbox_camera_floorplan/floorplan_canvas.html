@@ -17,9 +17,13 @@
     <div class="mb-2 d-flex align-items-center gap-2">
       <label for="cfp-label-mode" class="form-label small mb-0 text-muted">Marker label:</label>
       <select id="cfp-label-mode" class="form-select form-select-sm" style="max-width:160px;">
+        {% if not hide_ip %}
         <option value="both">Name + IP</option>
-        <option value="name">Name only</option>
+        {% endif %}
+        <option value="name"{% if hide_ip %} selected{% endif %}>Name only</option>
+        {% if not hide_ip %}
         <option value="ip">IP only</option>
+        {% endif %}
       </select>
       <label for="cfp-marker-size" class="form-label small mb-0 text-muted ms-2">Marker size:</label>
       <select id="cfp-marker-size" class="form-select form-select-sm" style="max-width:140px;">
@@ -214,8 +218,14 @@
   // canvas click assigns that device's x/y via the existing save-camera
   // endpoint (an update, not a create), rather than opening the add-modal.
   let placingId = null;
+  const HIDE_IP = {{ hide_ip|yesno:"true,false" }};
   const LABEL_MODE_KEY = 'netbox_camera_floorplan_label_mode';
-  let labelMode = localStorage.getItem(LABEL_MODE_KEY) || 'both';
+  // A persisted preference of "both" or "ip" from a previous (non-CCTV)
+  // session would otherwise try to select an <option> that doesn't exist
+  // in this view's dropdown at all, since those options are omitted
+  // server-side when hide_ip is true — force "name" here rather than let
+  // that produce a dropdown with nothing visibly selected.
+  let labelMode = HIDE_IP ? 'name' : (localStorage.getItem(LABEL_MODE_KEY) || 'both');
 
   const MARKER_SIZE_KEY = 'netbox_camera_floorplan_marker_size';
   const MARKER_SIZE_PRESETS = {

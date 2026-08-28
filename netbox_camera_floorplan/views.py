@@ -299,11 +299,11 @@ class CCTVFloorPlanCanvasView(PermissionRequiredMixin, View):
 
     def get(self, request, pk):
         floorplan = get_object_or_404(FloorPlan, pk=pk)
-        context = _build_canvas_context(request, floorplan, camera_only=True, force_read_only=True)
+        context = _build_canvas_context(request, floorplan, camera_only=True, force_read_only=True, hide_ip=True)
         return render(request, "netbox_camera_floorplan/floorplan_canvas.html", context)
 
 
-def _build_canvas_context(request, floorplan, camera_only=False, force_read_only=False):
+def _build_canvas_context(request, floorplan, camera_only=False, force_read_only=False, hide_ip=False):
     """
     Shared context-builder for both the full editable canvas and the
     restricted read-only CCTV canvas — kept as one implementation so a
@@ -328,7 +328,12 @@ def _build_canvas_context(request, floorplan, camera_only=False, force_read_only
             "device_id": cam.device.pk,
             "device_name": cam.device.name,
             "device_url": cam.device.get_absolute_url(),
-            "ip_address": str(primary_ip.address.ip) if primary_ip else None,
+            # Suppressed at the source for the restricted CCTV view, not
+            # just hidden in the template — a technical user could still
+            # read raw page data (view-source, devtools network tab) even
+            # if display were merely hidden client-side. Not sending the
+            # value at all is the only way to actually keep it out.
+            "ip_address": None if hide_ip else (str(primary_ip.address.ip) if primary_ip else None),
             "camera_type_id": cam.camera_type_id,
             "x_pct": float(cam.x_pct) if cam.is_placed else None,
             "y_pct": float(cam.y_pct) if cam.is_placed else None,
@@ -415,6 +420,7 @@ def _build_canvas_context(request, floorplan, camera_only=False, force_read_only
         "camera_types_json": json.dumps(camera_types),
         "nvrs_json": json.dumps(nvr_data),
         "can_edit": can_edit,
+        "hide_ip": hide_ip,
     }
 
 
