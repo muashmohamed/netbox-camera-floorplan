@@ -15,17 +15,15 @@
 <div class="row">
   <div class="col-md-9">
     <div class="mb-2 d-flex align-items-center gap-2">
+      {% if not restricted %}
       <label for="cfp-label-mode" class="form-label small mb-0 text-muted">Marker label:</label>
       <select id="cfp-label-mode" class="form-select form-select-sm" style="max-width:160px;">
-        {% if not restricted %}
         <option value="both">Name + IP</option>
-        {% endif %}
-        <option value="name"{% if restricted %} selected{% endif %}>Name only</option>
-        {% if not restricted %}
+        <option value="name">Name only</option>
         <option value="ip">IP only</option>
-        {% endif %}
       </select>
-      <label for="cfp-marker-size" class="form-label small mb-0 text-muted ms-2">Marker size:</label>
+      {% endif %}
+      <label for="cfp-marker-size" class="form-label small mb-0 text-muted{% if not restricted %} ms-2{% endif %}">Marker size:</label>
       <select id="cfp-marker-size" class="form-select form-select-sm" style="max-width:140px;">
         <option value="small">Small</option>
         <option value="medium" selected>Medium</option>
@@ -571,7 +569,7 @@
         </div>` : cameraTypeName(cam.camera_type_id)}
       </div>
       ${RESTRICTED ? '' : `<div class="mb-2"><strong>Uplink</strong><br>${uplinkHtml}</div>`}
-      <div class="mb-2"><strong>Power</strong><br>${powerHtml}</div>
+      ${RESTRICTED ? '' : `<div class="mb-2"><strong>Power</strong><br>${powerHtml}</div>`}
       ${canEdit ? `
         <div class="mb-2">
           <label class="form-label small text-muted mb-1">Power source override (manual note — only shown above if NetBox has no real power connection for this device)</label>
@@ -581,6 +579,7 @@
           </div>
         </div>
       ` : ''}
+      ${RESTRICTED ? '' : `
       <div class="mb-2" id="cfp-direction-wrap" style="display:${cameraTypeIsCamera(cam.camera_type_id) ? '' : 'none'};">
         <strong>Direction</strong><br>
         ${canEdit ? `
@@ -591,6 +590,7 @@
           <div class="text-center small text-muted cfp-direction-label">${cam.direction_degrees}°</div>
         ` : cam.direction_degrees + '°'}
       </div>
+      `}
       ${RESTRICTED ? '' : `
       <div class="mb-2" id="cfp-nvr-wrap" style="display:${cameraTypeIsCamera(cam.camera_type_id) ? '' : 'none'};">
         <strong>Connected NVR</strong><br>

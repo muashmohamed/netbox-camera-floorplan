@@ -329,7 +329,7 @@ def _build_canvas_context(request, floorplan, camera_only=False, force_read_only
     unplaced_data = []
     for cam in placements:
         uplinks = [] if restricted else cam.get_uplink_terminations()
-        power = cam.get_power_terminations()
+        power = [] if restricted else cam.get_power_terminations()
         primary_ip = cam.device.primary_ip4
         entry = {
             "id": cam.pk,
@@ -340,8 +340,11 @@ def _build_canvas_context(request, floorplan, camera_only=False, force_read_only
             "camera_type_id": cam.camera_type_id,
             "x_pct": float(cam.x_pct) if cam.is_placed else None,
             "y_pct": float(cam.y_pct) if cam.is_placed else None,
+            # Kept even when restricted — this drives the actual FOV cone
+            # drawn on the map itself, which is the core point of a
+            # camera-coverage view, not just extra panel text.
             "direction_degrees": cam.direction_degrees,
-            "power_source_override": cam.power_source_override,
+            "power_source_override": "" if restricted else cam.power_source_override,
             "notes": "" if restricted else cam.notes,
             "reachability": cam.get_reachability(),
             "connected_nvr_id": None if restricted else cam.connected_nvr_id,
