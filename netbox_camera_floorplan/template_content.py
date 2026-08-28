@@ -161,14 +161,17 @@ class LocationFloorPlanIndicator(PluginTemplateExtension):
 
       var btn = document.createElement('a');
       btn.href = floorplanUrl;
-      btn.className = 'btn btn-cyan btn-sm me-1';
+      // me-2 (a full 0.5rem gap, not just 0.25rem) deliberately reads as
+      // MORE separated than NetBox's own native buttons are from each
+      // other — this is a plugin addition, not a NetBox-native control,
+      // and shouldn't visually blend in as if it were one.
+      btn.className = 'btn btn-cyan btn-sm me-2';
       btn.title = 'Open this location\\'s Camera Floor Plan';
       btn.innerHTML = '<i class="mdi mdi-floor-plan"></i>';
-      // Inserted as its own standalone element BEFORE everything else in
-      // the actions cell (not appended into the existing .btn-group) —
-      // appending into that group made Bootstrap render it as a visually
-      // connected segment flush against the edit button, rather than the
-      // separate, distinct box it's meant to look like.
+      // Inserted as a standalone element before NetBox's own buttons,
+      // without touching or rewrapping their existing markup at all —
+      // safer than moving their DOM nodes into a shared container, and
+      // keeps this visually and structurally separate as intended.
       actionsCell.insertBefore(btn, actionsCell.firstChild);
       row.dataset.cfpFloorplanBtn = 'true';
     }});
@@ -183,3 +186,102 @@ class LocationFloorPlanIndicator(PluginTemplateExtension):
 
 
 template_extensions = [CameraPlacementListGrouping, FloorPlanListGrouping, LocationFloorPlanIndicator]
+
+# ---------------------------------------------------------------------------
+# Security Zone badges — reads a NetBox-native Custom Field, doesn't define
+# or own the classification data itself. Set up once in Admin > Customization
+# > Custom Fields: a Selection-type field named exactly "security_zone",
+# assigned to the Location model, with choices matching the keys below
+# (Public / Controlled / Restricted / High Security). This plugin code only
+# renders whatever that field already holds — it's a display layer on top of
+# NetBox's own general-purpose classification mechanism, not a replacement
+# for it (per the ISO 27001 physical-security-zoning discussion: the
+# classification itself belongs in Custom Fields, since it's a general
+# NetBox concept, not something specific to camera floor plans).
+# ---------------------------------------------------------------------------
+
+_SECURITY_ZONE_STYLES = {
+    "Public": {"color": "green", "description": "Publicly accessible area. No special access controls required."},
+    "Controlled": {
+        "color": "cyan",
+        "description": "Access limited to employees and authorized visitors. Sign-in or escort may be required.",
+    },
+    "Restricted": {
+        "color": "orange",
+        "description": "Access limited to authorized personnel only. Escort required for visitors. Entry is logged.",
+    },
+    "High Security": {
+        "color": "red",
+        "description": (
+            "Highest security zone (e.g. server/comms rooms). Access strictly limited to designated "
+            "authorized personnel. All entry/exit logged and monitored."
+        ),
+    },
+}
+
+
+class LocationSecurityZoneIndicator(PluginTemplateExtension):
+    """
+    Renders the "security_zone" custom field (if set) as a colored badge
+    next to each Location's name in the core DCIM Locations list, with a
+    hover tooltip describing what that zone level means/requires.
+
+    Deliberately reads custom_field_data directly rather than assuming
+    which choices exist — if the custom field is renamed, given different
+    choice values, or not created at all yet, this silently does nothing
+    rather than erroring, since the field's existence and choices are
+    admin-configured data this code doesn't own or control.
+    """
+
+    model = "dcim.location"
+
+    def list_buttons(self):
+        from dcim.models import Location
+
+        zone_by_location = {}
+        for loc in Location.objects.only("pk", "custom_field_data"):
+            zone = (loc.custom_field_data or {}).get("security_zone")
+            if zone:
+                zone_by_location[loc.pk] = zone
+        zone_by_location_json = json.dumps(zone_by_location)
+        styles_json = json.dumps(_SECURITY_ZONE_STYLES)
+
+        return f"""
+<script>
+(function(){{
+  var ZONE_BY_LOCATION = {zone_by_location_json};
+  var ZONE_STYLES = {styles_json};
+
+  function applyZoneBadges(){{
+    var table = document.querySelector('table.object-list');
+    if(!table) return;
+    var rows = table.querySelectorAll('tbody tr');
+    rows.forEach(function(row){{
+      if(row.dataset.cfpZoneBadge) return;  // avoid re-adding on repeated htmx refreshes
+      var link = row.querySelector('td a[href*="/dcim/locations/"]');
+      if(!link) return;
+      var match = link.getAttribute('href').match(/\\/dcim\\/locations\\/(\\d+)\\//);
+      if(!match) return;
+      var zone = ZONE_BY_LOCATION[match[1]];
+      if(!zone) return;
+      var style = ZONE_STYLES[zone];
+      if(!style) return;  // an unrecognized/custom choice value — skip rather than guess a color
+
+      var badge = document.createElement('span');
+      badge.className = 'badge text-bg-' + style.color + ' ms-2';
+      badge.title = style.description;
+      badge.textContent = zone;
+      link.parentNode.insertBefore(badge, link.nextSibling);
+      row.dataset.cfpZoneBadge = 'true';
+    }});
+  }}
+
+  document.addEventListener('DOMContentLoaded', applyZoneBadges);
+  document.body.addEventListener('htmx:afterSwap', applyZoneBadges);
+  document.body.addEventListener('htmx:afterSettle', applyZoneBadges);
+}})();
+</script>
+"""
+
+
+template_extensions.append(LocationSecurityZoneIndicator)
