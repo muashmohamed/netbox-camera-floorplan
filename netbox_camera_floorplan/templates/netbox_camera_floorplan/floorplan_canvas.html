@@ -5,6 +5,25 @@
 {% block title %}{{ floorplan }}{% endblock %}
 
 {% block content %}
+{% if restricted %}
+<style>
+  /* Blocks browser-native printing (Ctrl+P, File > Print), not just the
+     removed Export button — since window.print() is a browser feature
+     any page can trigger regardless of whether we expose a button for
+     it, hiding the button alone wouldn't actually stop printing. This
+     makes the printed output blank with an explanatory message instead,
+     which holds up regardless of how print is invoked. */
+  @media print {
+    body * { visibility: hidden !important; }
+    body::after {
+      content: "This view is confidential and cannot be printed or exported.";
+      visibility: visible !important;
+      position: fixed; top: 40%; left: 0; right: 0;
+      text-align: center; font-size: 20px; color: #333;
+    }
+  }
+</style>
+{% endif %}
 <div class="row mb-3">
   <div class="col-12">
     <h1>{{ floorplan.site }} / {{ floorplan.name }}</h1>
@@ -30,9 +49,11 @@
         <option value="large">Large</option>
         <option value="xlarge">Extra Large</option>
       </select>
+      {% if not restricted %}
       <button type="button" id="cfp-export-pdf-btn" class="btn btn-sm btn-outline-secondary ms-auto d-print-none">
         <i class="mdi mdi-file-pdf-box"></i> Export to PDF
       </button>
+      {% endif %}
     </div>
     <div id="cfp-stage-wrap" style="position:relative; border:1px solid var(--tblr-border-color); overflow:auto; background:transparent;">
       <div id="cfp-stage" style="position:relative; display:inline-block;">
