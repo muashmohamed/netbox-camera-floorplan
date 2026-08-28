@@ -17,11 +17,11 @@
     <div class="mb-2 d-flex align-items-center gap-2">
       <label for="cfp-label-mode" class="form-label small mb-0 text-muted">Marker label:</label>
       <select id="cfp-label-mode" class="form-select form-select-sm" style="max-width:160px;">
-        {% if not hide_ip %}
+        {% if not restricted %}
         <option value="both">Name + IP</option>
         {% endif %}
-        <option value="name"{% if hide_ip %} selected{% endif %}>Name only</option>
-        {% if not hide_ip %}
+        <option value="name"{% if restricted %} selected{% endif %}>Name only</option>
+        {% if not restricted %}
         <option value="ip">IP only</option>
         {% endif %}
       </select>
@@ -218,14 +218,14 @@
   // canvas click assigns that device's x/y via the existing save-camera
   // endpoint (an update, not a create), rather than opening the add-modal.
   let placingId = null;
-  const HIDE_IP = {{ hide_ip|yesno:"true,false" }};
+  const RESTRICTED = {{ restricted|yesno:"true,false" }};
   const LABEL_MODE_KEY = 'netbox_camera_floorplan_label_mode';
   // A persisted preference of "both" or "ip" from a previous (non-CCTV)
   // session would otherwise try to select an <option> that doesn't exist
   // in this view's dropdown at all, since those options are omitted
-  // server-side when hide_ip is true — force "name" here rather than let
-  // that produce a dropdown with nothing visibly selected.
-  let labelMode = HIDE_IP ? 'name' : (localStorage.getItem(LABEL_MODE_KEY) || 'both');
+  // server-side when restricted is true — force "name" here rather than
+  // let that produce a dropdown with nothing visibly selected.
+  let labelMode = RESTRICTED ? 'name' : (localStorage.getItem(LABEL_MODE_KEY) || 'both');
 
   const MARKER_SIZE_KEY = 'netbox_camera_floorplan_marker_size';
   const MARKER_SIZE_PRESETS = {
@@ -570,7 +570,7 @@
           <div class="cfp-ctp-menu"></div>
         </div>` : cameraTypeName(cam.camera_type_id)}
       </div>
-      <div class="mb-2"><strong>Uplink</strong><br>${uplinkHtml}</div>
+      ${RESTRICTED ? '' : `<div class="mb-2"><strong>Uplink</strong><br>${uplinkHtml}</div>`}
       <div class="mb-2"><strong>Power</strong><br>${powerHtml}</div>
       ${canEdit ? `
         <div class="mb-2">
@@ -591,6 +591,7 @@
           <div class="text-center small text-muted cfp-direction-label">${cam.direction_degrees}°</div>
         ` : cam.direction_degrees + '°'}
       </div>
+      ${RESTRICTED ? '' : `
       <div class="mb-2" id="cfp-nvr-wrap" style="display:${cameraTypeIsCamera(cam.camera_type_id) ? '' : 'none'};">
         <strong>Connected NVR</strong><br>
         ${canEdit ? `
@@ -611,9 +612,12 @@
           <span class="text-muted">(${cam.nvr_channel_usage.available} available)</span>
         </div>
       ` : ''}
+      `}
+      ${RESTRICTED ? '' : `
       <div class="mb-2"><strong>Notes</strong><br>
         ${canEdit ? `<textarea id="cfp-notes" class="form-control form-control-sm">${cam.notes || ''}</textarea>` : (cam.notes || '<span class="text-muted">None</span>')}
       </div>
+      `}
       ${canEdit ? `
         <button class="btn btn-sm btn-primary w-100 mb-1" id="cfp-save-btn">Save</button>
         <button class="btn btn-sm btn-outline-secondary w-100 mb-1" id="cfp-move-btn">

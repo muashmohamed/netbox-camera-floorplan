@@ -299,17 +299,25 @@ class CCTVFloorPlanCanvasView(PermissionRequiredMixin, View):
 
     def get(self, request, pk):
         floorplan = get_object_or_404(FloorPlan, pk=pk)
-        context = _build_canvas_context(request, floorplan, camera_only=True, force_read_only=True, hide_ip=True)
+        context = _build_canvas_context(request, floorplan, camera_only=True, force_read_only=True, restricted=True)
         return render(request, "netbox_camera_floorplan/floorplan_canvas.html", context)
 
 
-def _build_canvas_context(request, floorplan, camera_only=False, force_read_only=False, hide_ip=False):
+def _build_canvas_context(request, floorplan, camera_only=False, force_read_only=False, restricted=False):
     """
     Shared context-builder for both the full editable canvas and the
     restricted read-only CCTV canvas — kept as one implementation so a
     future field/feature added to the canvas is available (or
     deliberately excluded) consistently in both places, rather than two
     copies silently drifting apart.
+
+    `restricted=True` suppresses IP address, uplink (switch/port),
+    connected-NVR/channel, and notes — all at the data source, not just
+    hidden client-side, since a technical user could otherwise still read
+    raw page data (view-source, devtools network tab) even with display
+    merely hidden. None of these are needed for the CCTV view's actual
+    purpose (confirming a camera exists and is reachable); they reveal
+    internal network topology or admin notes that could contain anything.
     """
     placements = floorplan.cameras.select_related(
         "device", "device__primary_ip4", "camera_type", "connected_nvr__device"
@@ -320,7 +328,7 @@ def _build_canvas_context(request, floorplan, camera_only=False, force_read_only
     camera_data = []
     unplaced_data = []
     for cam in placements:
-        uplinks = cam.get_uplink_terminations()
+        uplinks = [] if restricted else cam.get_uplink_terminations()
         power = cam.get_power_terminations()
         primary_ip = cam.device.primary_ip4
         entry = {
@@ -328,22 +336,17 @@ def _build_canvas_context(request, floorplan, camera_only=False, force_read_only
             "device_id": cam.device.pk,
             "device_name": cam.device.name,
             "device_url": cam.device.get_absolute_url(),
-            # Suppressed at the source for the restricted CCTV view, not
-            # just hidden in the template — a technical user could still
-            # read raw page data (view-source, devtools network tab) even
-            # if display were merely hidden client-side. Not sending the
-            # value at all is the only way to actually keep it out.
-            "ip_address": None if hide_ip else (str(primary_ip.address.ip) if primary_ip else None),
+            "ip_address": None if restricted else (str(primary_ip.address.ip) if primary_ip else None),
             "camera_type_id": cam.camera_type_id,
             "x_pct": float(cam.x_pct) if cam.is_placed else None,
             "y_pct": float(cam.y_pct) if cam.is_placed else None,
             "direction_degrees": cam.direction_degrees,
             "power_source_override": cam.power_source_override,
-            "notes": cam.notes,
+            "notes": "" if restricted else cam.notes,
             "reachability": cam.get_reachability(),
-            "connected_nvr_id": cam.connected_nvr_id,
-            "nvr_channel": cam.nvr_channel,
-            "channel_label": cam.get_channel_label(),
+            "connected_nvr_id": None if restricted else cam.connected_nvr_id,
+            "nvr_channel": None if restricted else cam.nvr_channel,
+            "channel_label": None if restricted else cam.get_channel_label(),
             "nvr_channel_usage": cam.get_nvr_channel_usage(),
             "uplinks": [
                 {
@@ -386,26 +389,29 @@ def _build_canvas_context(request, floorplan, camera_only=False, force_read_only
     # Every placed NVR across ALL floor plans, not just this one — an
     # NVR is often in a different room/rack than the cameras feeding
     # into it, so a camera here needs to be able to point at an NVR
-    # placed elsewhere. Included even in the read-only CCTV view (as
-    # informational "Connected NVR: X — D3" text, never a picker) since
-    # that's genuinely useful context for security staff, not an edit
-    # affordance.
-    nvr_placements = (
-        CameraPlacement.objects.filter(camera_type__category=CameraType.CATEGORY_NVR)
-        .select_related("device", "camera_type", "floorplan")
-    )
-    nvr_data = [
-        {
-            "id": nvr.pk,
-            "device_name": nvr.device.name,
-            "floorplan_id": nvr.floorplan_id,
-            "floorplan_name": str(nvr.floorplan),
-            "capacity": nvr.camera_type.channel_capacity if nvr.camera_type else None,
-            "usage": nvr.get_nvr_channel_usage(),
-            "used_channels": nvr.get_nvr_channel_assignments(),
-        }
-        for nvr in nvr_placements
-    ]
+    # placed elsewhere. Suppressed entirely for the restricted CCTV view
+    # (not just left unreferenced) — even though no camera there would
+    # display it, leaving real NVR device names sitting in the raw page
+    # JSON would defeat the point of suppressing them in the first place.
+    if restricted:
+        nvr_data = []
+    else:
+        nvr_placements = (
+            CameraPlacement.objects.filter(camera_type__category=CameraType.CATEGORY_NVR)
+            .select_related("device", "camera_type", "floorplan")
+        )
+        nvr_data = [
+            {
+                "id": nvr.pk,
+                "device_name": nvr.device.name,
+                "floorplan_id": nvr.floorplan_id,
+                "floorplan_name": str(nvr.floorplan),
+                "capacity": nvr.camera_type.channel_capacity if nvr.camera_type else None,
+                "usage": nvr.get_nvr_channel_usage(),
+                "used_channels": nvr.get_nvr_channel_assignments(),
+            }
+            for nvr in nvr_placements
+        ]
 
     if force_read_only:
         can_edit = False
@@ -420,7 +426,7 @@ def _build_canvas_context(request, floorplan, camera_only=False, force_read_only
         "camera_types_json": json.dumps(camera_types),
         "nvrs_json": json.dumps(nvr_data),
         "can_edit": can_edit,
-        "hide_ip": hide_ip,
+        "restricted": restricted,
     }
 
 
