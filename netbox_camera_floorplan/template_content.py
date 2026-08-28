@@ -268,10 +268,16 @@ class LocationSecurityZoneIndicator(PluginTemplateExtension):
       if(!style) return;  // an unrecognized/custom choice value — skip rather than guess a color
 
       var badge = document.createElement('span');
-      badge.className = 'badge text-bg-' + style.color + ' ms-2';
+      badge.className = 'badge text-bg-' + style.color + ' mx-2';
       badge.title = style.description;
       badge.textContent = zone;
-      link.parentNode.insertBefore(badge, link.nextSibling);
+      // insertAdjacentElement('afterend', ...) unambiguously places the
+      // badge immediately after the link element itself, regardless of
+      // what nextSibling happens to resolve to for this specific row's
+      // markup (tree-indentation wrapper elements etc.) — insertBefore()
+      // with link.nextSibling produced an inconsistent/cramped result in
+      // practice, worth avoiding rather than debugging blind.
+      link.insertAdjacentElement('afterend', badge);
       row.dataset.cfpZoneBadge = 'true';
     }});
   }}
