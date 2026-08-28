@@ -1,4 +1,5 @@
 import django_tables2 as tables
+from django.urls import reverse
 from django.utils.html import format_html, format_html_join
 
 from netbox.tables import ActionsColumn, NetBoxTable
@@ -50,6 +51,38 @@ class CameraTypeTable(NetBoxTable):
         )
 
 
+def _render_reachability_summary_badges(summary):
+    """
+    Shared badge-rendering logic for a reachability summary dict (as
+    returned by FloorPlan.get_reachability_summary() or its camera-scoped
+    counterpart get_camera_reachability_summary()) — used by both
+    FloorPlanTable and CCTVFloorPlanTable so the visual logic never
+    drifts out of sync between the two.
+    """
+    if summary["total"] == 0:
+        return format_html('<span class="text-muted">{}</span>', "No devices")
+
+    # Show every issue that actually applies, not just the highest
+    # priority one — an earlier version only ever showed one badge,
+    # which silently hid a "no IP" device whenever an "unreachable"
+    # device also existed on the same floor plan.
+    issues = []
+    if summary["unreachable"] > 0:
+        issues.append(("red", f"{summary['unreachable']} unreachable"))
+    if summary["no_ip"] > 0:
+        issues.append(("orange", f"{summary['no_ip']} no IP"))
+
+    if issues:
+        return format_html_join(
+            " ", '<span class="badge text-bg-{}">{}</span>', issues
+        )
+    if summary["reachable"] == summary["total"]:
+        return format_html('<span class="badge text-bg-green">{}</span>', "All reachable")
+    # Remaining case: some reachable, some "no_data" (has an IP, just
+    # no monitoring result recorded yet) — neutral, not alarming.
+    return format_html('<span class="badge text-bg-secondary">{}</span>', "No data")
+
+
 class FloorPlanTable(NetBoxTable):
     name = tables.Column(linkify=True)
     site = tables.Column(linkify=True)
@@ -68,29 +101,47 @@ class FloorPlanTable(NetBoxTable):
         default_columns = ("name", "site", "location", "camera_count", "reachability")
 
     def render_reachability(self, record):
-        summary = record.get_reachability_summary()
-        if summary["total"] == 0:
-            return format_html('<span class="text-muted">{}</span>', "No devices")
+        return _render_reachability_summary_badges(record.get_reachability_summary())
 
-        # Show every issue that actually applies, not just the highest
-        # priority one — an earlier version only ever showed one badge,
-        # which silently hid a "no IP" device whenever an "unreachable"
-        # device also existed on the same floor plan.
-        issues = []
-        if summary["unreachable"] > 0:
-            issues.append(("red", f"{summary['unreachable']} unreachable"))
-        if summary["no_ip"] > 0:
-            issues.append(("orange", f"{summary['no_ip']} no IP"))
 
-        if issues:
-            return format_html_join(
-                " ", '<span class="badge text-bg-{}">{}</span>', issues
-            )
-        if summary["reachable"] == summary["total"]:
-            return format_html('<span class="badge text-bg-green">{}</span>', "All reachable")
-        # Remaining case: some reachable, some "no_data" (has an IP, just
-        # no monitoring result recorded yet) — neutral, not alarming.
-        return format_html('<span class="badge text-bg-secondary">{}</span>', "No data")
+class CCTVFloorPlanTable(NetBoxTable):
+    """
+    Read-only, camera-only counterpart to FloorPlanTable — same shape,
+    but its "name" link goes to the restricted read-only canvas (not the
+    editable one), its device count and status badges are computed from
+    camera-category placements only (get_camera_reachability_summary(),
+    not get_reachability_summary()), and there are no action buttons at
+    all (not even a permission-gated one — the column itself is empty).
+    """
+
+    name = tables.Column()
+    site = tables.Column(linkify=True)
+    location = tables.Column(linkify=True)
+    camera_count = tables.Column(
+        empty_values=(), orderable=False, verbose_name="Cameras", accessor="pk",
+    )
+    reachability = tables.Column(
+        empty_values=(), orderable=False, verbose_name="Status", accessor="pk",
+    )
+    actions = ActionsColumn(actions=())
+
+    class Meta(NetBoxTable.Meta):
+        model = FloorPlan
+        fields = ("pk", "id", "name", "site", "location", "camera_count", "reachability")
+        default_columns = ("name", "site", "location", "camera_count", "reachability")
+
+    def render_name(self, record):
+        return format_html(
+            '<a href="{}">{}</a>',
+            reverse("plugins:netbox_camera_floorplan:cctv_floorplan", args=[record.pk]),
+            record.name,
+        )
+
+    def render_camera_count(self, record):
+        return record.get_camera_reachability_summary()["total"]
+
+    def render_reachability(self, record):
+        return _render_reachability_summary_badges(record.get_camera_reachability_summary())
 
 
 class CameraPlacementTable(NetBoxTable):

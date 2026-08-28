@@ -65,6 +65,39 @@ class FloorPlanListView(generic.ObjectListView):
     filterset_form = forms.FloorPlanFilterForm
 
 
+class CCTVFloorPlanListView(generic.ObjectListView):
+    """
+    A separate, read-only list of every floor plan, for restricted
+    security staff access — deliberately gated on a dedicated custom
+    permission, NOT the standard view_floorplan permission the main list
+    uses. Granting a user only this permission gives them this page (and
+    the read-only camera-only canvas it links to) without unlocking the
+    full editable Device Floor Plans section at all.
+
+    Shares FloorPlan.objects as its queryset (same set of floor plans —
+    restricting *which* floor plans exist isn't the point here), but its
+    table shows camera-only counts (see CCTVFloorPlanTable) and its rows
+    link to the read-only canvas, not the editable one.
+    """
+
+    queryset = FloorPlan.objects.prefetch_related("cameras__device")
+    table = tables.CCTVFloorPlanTable
+    filterset = filtersets.FloorPlanFilterSet
+    filterset_form = forms.FloorPlanFilterForm
+    template_name = "netbox_camera_floorplan/cctv_floorplan_list.html"
+    actions = ()  # no Add/Import/Export/Bulk-anything — pure read-only list
+
+    def get_required_permission(self):
+        # generic.ObjectListView computes its required permission via
+        # this method (get_permission_for_model(self.queryset.model,
+        # 'view') by default) — it does NOT read a plain
+        # `permission_required` class attribute the way Django's own
+        # PermissionRequiredMixin convention does. Setting that attribute
+        # alone silently has no effect here; overriding this method is
+        # the actual mechanism that works, confirmed by testing.
+        return "netbox_camera_floorplan.view_cctv_floorplan"
+
+
 class FloorPlanEditView(generic.ObjectEditView):
     queryset = FloorPlan.objects.all()
     form = forms.FloorPlanForm
@@ -240,100 +273,149 @@ class FloorPlanCanvasView(PermissionRequiredMixin, View):
 
     def get(self, request, pk):
         floorplan = get_object_or_404(FloorPlan, pk=pk)
-        cameras = floorplan.cameras.select_related(
-            "device", "device__primary_ip4", "camera_type", "connected_nvr__device"
-        ).all()
+        context = _build_canvas_context(request, floorplan, camera_only=False)
+        return render(request, "netbox_camera_floorplan/floorplan_canvas.html", context)
 
-        camera_data = []
-        unplaced_data = []
-        for cam in cameras:
-            uplinks = cam.get_uplink_terminations()
-            power = cam.get_power_terminations()
-            primary_ip = cam.device.primary_ip4
-            entry = {
-                "id": cam.pk,
-                "device_id": cam.device.pk,
-                "device_name": cam.device.name,
-                "device_url": cam.device.get_absolute_url(),
-                "ip_address": str(primary_ip.address.ip) if primary_ip else None,
-                "camera_type_id": cam.camera_type_id,
-                "x_pct": float(cam.x_pct) if cam.is_placed else None,
-                "y_pct": float(cam.y_pct) if cam.is_placed else None,
-                "direction_degrees": cam.direction_degrees,
-                "power_source_override": cam.power_source_override,
-                "notes": cam.notes,
-                "reachability": cam.get_reachability(),
-                "connected_nvr_id": cam.connected_nvr_id,
-                "nvr_channel": cam.nvr_channel,
-                "channel_label": cam.get_channel_label(),
-                "nvr_channel_usage": cam.get_nvr_channel_usage(),
-                "uplinks": [
-                    {
-                        "local_interface": str(local_if),
-                        "remote_device": str(remote_dev) if remote_dev else None,
-                        "remote_interface": str(remote_if),
-                    }
-                    for local_if, remote_dev, remote_if in uplinks
-                ],
-                "power_terminations": [
-                    {"port": str(p), "remote": str(r)} for p, r in power
-                ],
-            }
-            if cam.is_placed:
-                camera_data.append(entry)
-            else:
-                unplaced_data.append(entry)
 
-        camera_types = [
-            {
-                "id": ct.pk,
-                "name": ct.name,
-                "color": ct.color,
-                "icon_url": ct.get_icon_url(),
-                "fov_degrees": ct.fov_degrees,
-                "category": ct.category,
-                "is_camera": ct.is_camera,
-                "is_nvr": ct.is_nvr,
-                "channel_capacity": ct.channel_capacity,
-            }
-            for ct in CameraType.objects.all()
-        ]
+class CCTVFloorPlanCanvasView(PermissionRequiredMixin, View):
+    """
+    Read-only, camera-only variant of FloorPlanCanvasView, for restricted
+    security-team access — gated on its own dedicated permission
+    (view_cctv_floorplan, see FloorPlan.Meta.permissions), completely
+    decoupled from view_floorplan.
 
-        # Every placed NVR across ALL floor plans, not just this one — an
-        # NVR is often in a different room/rack than the cameras feeding
-        # into it, so a camera here needs to be able to point at an NVR
-        # placed elsewhere.
-        nvr_placements = (
-            CameraPlacement.objects.filter(camera_type__category=CameraType.CATEGORY_NVR)
-            .select_related("device", "camera_type", "floorplan")
-        )
-        nvr_data = [
-            {
-                "id": nvr.pk,
-                "device_name": nvr.device.name,
-                "floorplan_id": nvr.floorplan_id,
-                "floorplan_name": str(nvr.floorplan),
-                "capacity": nvr.camera_type.channel_capacity if nvr.camera_type else None,
-                "usage": nvr.get_nvr_channel_usage(),
-                # JSON object keys are always strings, so channel numbers
-                # come through JS-side as string keys ("3", not 3) — the
-                # picker code below accounts for that.
-                "used_channels": nvr.get_nvr_channel_assignments(),
-            }
-            for nvr in nvr_placements
-        ]
+    Two guarantees, both enforced here rather than left to the shared
+    template's discipline alone:
+    1. Camera-only, always — camera_only=True below filters the queryset
+       to camera_type__category="camera" before anything is serialized;
+       switches/APs/UPS/NVRs never appear, not even in aggregate counts.
+    2. Hardcoded read-only, not permission-dependent — can_edit is forced
+       False unconditionally, never derived from the requesting user's
+       other permissions (so even a user who happens to also hold
+       add_cameraplacement elsewhere still can't edit from this page).
+    """
 
+    permission_required = "netbox_camera_floorplan.view_cctv_floorplan"
+
+    def get(self, request, pk):
+        floorplan = get_object_or_404(FloorPlan, pk=pk)
+        context = _build_canvas_context(request, floorplan, camera_only=True, force_read_only=True)
+        return render(request, "netbox_camera_floorplan/floorplan_canvas.html", context)
+
+
+def _build_canvas_context(request, floorplan, camera_only=False, force_read_only=False):
+    """
+    Shared context-builder for both the full editable canvas and the
+    restricted read-only CCTV canvas — kept as one implementation so a
+    future field/feature added to the canvas is available (or
+    deliberately excluded) consistently in both places, rather than two
+    copies silently drifting apart.
+    """
+    placements = floorplan.cameras.select_related(
+        "device", "device__primary_ip4", "camera_type", "connected_nvr__device"
+    )
+    if camera_only:
+        placements = placements.filter(camera_type__category=CameraType.CATEGORY_CAMERA)
+
+    camera_data = []
+    unplaced_data = []
+    for cam in placements:
+        uplinks = cam.get_uplink_terminations()
+        power = cam.get_power_terminations()
+        primary_ip = cam.device.primary_ip4
+        entry = {
+            "id": cam.pk,
+            "device_id": cam.device.pk,
+            "device_name": cam.device.name,
+            "device_url": cam.device.get_absolute_url(),
+            "ip_address": str(primary_ip.address.ip) if primary_ip else None,
+            "camera_type_id": cam.camera_type_id,
+            "x_pct": float(cam.x_pct) if cam.is_placed else None,
+            "y_pct": float(cam.y_pct) if cam.is_placed else None,
+            "direction_degrees": cam.direction_degrees,
+            "power_source_override": cam.power_source_override,
+            "notes": cam.notes,
+            "reachability": cam.get_reachability(),
+            "connected_nvr_id": cam.connected_nvr_id,
+            "nvr_channel": cam.nvr_channel,
+            "channel_label": cam.get_channel_label(),
+            "nvr_channel_usage": cam.get_nvr_channel_usage(),
+            "uplinks": [
+                {
+                    "local_interface": str(local_if),
+                    "remote_device": str(remote_dev) if remote_dev else None,
+                    "remote_interface": str(remote_if),
+                }
+                for local_if, remote_dev, remote_if in uplinks
+            ],
+            "power_terminations": [
+                {"port": str(p), "remote": str(r)} for p, r in power
+            ],
+        }
+        if cam.is_placed:
+            camera_data.append(entry)
+        else:
+            unplaced_data.append(entry)
+
+    camera_type_qs = CameraType.objects.all()
+    if camera_only:
+        # The CCTV view only ever shows camera-category placements, so
+        # the Device Type list backing it doesn't need NVR/switch/etc.
+        # types either — nothing in the read-only UI could reference them.
+        camera_type_qs = camera_type_qs.filter(category=CameraType.CATEGORY_CAMERA)
+    camera_types = [
+        {
+            "id": ct.pk,
+            "name": ct.name,
+            "color": ct.color,
+            "icon_url": ct.get_icon_url(),
+            "fov_degrees": ct.fov_degrees,
+            "category": ct.category,
+            "is_camera": ct.is_camera,
+            "is_nvr": ct.is_nvr,
+            "channel_capacity": ct.channel_capacity,
+        }
+        for ct in camera_type_qs
+    ]
+
+    # Every placed NVR across ALL floor plans, not just this one — an
+    # NVR is often in a different room/rack than the cameras feeding
+    # into it, so a camera here needs to be able to point at an NVR
+    # placed elsewhere. Included even in the read-only CCTV view (as
+    # informational "Connected NVR: X — D3" text, never a picker) since
+    # that's genuinely useful context for security staff, not an edit
+    # affordance.
+    nvr_placements = (
+        CameraPlacement.objects.filter(camera_type__category=CameraType.CATEGORY_NVR)
+        .select_related("device", "camera_type", "floorplan")
+    )
+    nvr_data = [
+        {
+            "id": nvr.pk,
+            "device_name": nvr.device.name,
+            "floorplan_id": nvr.floorplan_id,
+            "floorplan_name": str(nvr.floorplan),
+            "capacity": nvr.camera_type.channel_capacity if nvr.camera_type else None,
+            "usage": nvr.get_nvr_channel_usage(),
+            "used_channels": nvr.get_nvr_channel_assignments(),
+        }
+        for nvr in nvr_placements
+    ]
+
+    if force_read_only:
+        can_edit = False
+    else:
         can_edit = request.user.has_perm("netbox_camera_floorplan.add_cameraplacement")
 
-        return render(request, "netbox_camera_floorplan/floorplan_canvas.html", {
-            "object": floorplan,
-            "floorplan": floorplan,
-            "cameras_json": json.dumps(camera_data),
-            "unplaced_json": json.dumps(unplaced_data),
-            "camera_types_json": json.dumps(camera_types),
-            "nvrs_json": json.dumps(nvr_data),
-            "can_edit": can_edit,
-        })
+    return {
+        "object": floorplan,
+        "floorplan": floorplan,
+        "cameras_json": json.dumps(camera_data),
+        "unplaced_json": json.dumps(unplaced_data),
+        "camera_types_json": json.dumps(camera_types),
+        "nvrs_json": json.dumps(nvr_data),
+        "can_edit": can_edit,
+    }
 
 
 @method_decorator(csrf_protect, name="dispatch")

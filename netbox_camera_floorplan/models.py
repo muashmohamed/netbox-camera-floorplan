@@ -35,17 +35,6 @@ class FloorPlan(NetBoxModel):
     )
     comments = models.TextField(blank=True)
 
-    class Meta:
-        ordering = ["site__name", "location__name", "name"]
-        verbose_name = "Device Floor Plan"
-        verbose_name_plural = "Device Floor Plans"
-        constraints = [
-            models.UniqueConstraint(
-                fields=["site", "location", "name"],
-                name="unique_floorplan_per_site_location_name",
-            )
-        ]
-
     def __str__(self):
         if self.location:
             return f"{self.site.name} / {self.location.name} / {self.name}"
@@ -74,6 +63,49 @@ class FloorPlan(NetBoxModel):
             counts["total"] += 1
             counts[placement.get_reachability_status()] += 1
         return counts
+
+    def get_camera_reachability_summary(self):
+        """
+        Same as get_reachability_summary(), but scoped to camera-category
+        placements only — used by the restricted CCTV Floor Plans list,
+        which should never reflect or leak counts for switches/APs/UPS/
+        NVRs even in aggregate.
+        """
+        counts = {"total": 0, "reachable": 0, "unreachable": 0, "no_ip": 0, "no_data": 0}
+        for placement in self.cameras.all():
+            if not placement.camera_type or not placement.camera_type.is_camera:
+                continue
+            counts["total"] += 1
+            counts[placement.get_reachability_status()] += 1
+        return counts
+
+    class Meta:
+        ordering = ["site__name", "location__name", "name"]
+        verbose_name = "Device Floor Plan"
+        verbose_name_plural = "Device Floor Plans"
+        permissions = [
+            (
+                # Deliberately NOT "view_cctv_floorplan" here — NetBox's
+                # permission system automatically appends "_floorplan"
+                # (the model name) when constructing the actual
+                # has_perm()-checkable string. Including that suffix in
+                # the codename itself produced a doubled
+                # "view_cctv_floorplan_floorplan" in practice (confirmed
+                # via user.get_all_permissions() in a live shell) that
+                # never matched what permission_required actually checks
+                # for. Omitting it here lets NetBox's automatic
+                # single-appending produce the correct final string:
+                # "netbox_camera_floorplan.view_cctv_floorplan".
+                "view_cctv",
+                "Can view read-only CCTV camera floor plans",
+            ),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["site", "location", "name"],
+                name="unique_floorplan_per_site_location_name",
+            )
+        ]
 
 
 class CameraType(NetBoxModel):
