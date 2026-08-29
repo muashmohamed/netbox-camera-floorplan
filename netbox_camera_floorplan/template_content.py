@@ -148,8 +148,15 @@ class LocationFloorPlanIndicator(PluginTemplateExtension):
     var rows = table.querySelectorAll('tbody tr');
     rows.forEach(function(row){{
       if(row.dataset.cfpFloorplanBtn) return;  // avoid re-adding on repeated htmx refreshes
-      var link = row.querySelector('td a[href*="/dcim/locations/"]');
-      if(!link) return;
+      // querySelectorAll + last match, not querySelector's first match —
+      // nested/indented rows (a child Location under a parent) can have
+      // more than one /dcim/locations/ link in the same row (e.g. a
+      // parent-breadcrumb or tree-toggle link appearing before the row's
+      // own name link), and grabbing the first one silently attached
+      // content to the wrong element on those rows.
+      var links = row.querySelectorAll('td a[href*="/dcim/locations/"]');
+      if(!links.length) return;
+      var link = links[links.length - 1];
       var match = link.getAttribute('href').match(/\\/dcim\\/locations\\/(\\d+)\\//);
       if(!match) return;
       var floorplanUrl = FLOORPLAN_URLS_BY_LOCATION[match[1]];
@@ -258,8 +265,12 @@ class LocationSecurityZoneIndicator(PluginTemplateExtension):
     var rows = table.querySelectorAll('tbody tr');
     rows.forEach(function(row){{
       if(row.dataset.cfpZoneBadge) return;  // avoid re-adding on repeated htmx refreshes
-      var link = row.querySelector('td a[href*="/dcim/locations/"]');
-      if(!link) return;
+      // Same fix as the Floor Plan indicator above — last matching link,
+      // not the first, to avoid attaching to a parent-breadcrumb/toggle
+      // link instead of the row's own name link on nested rows.
+      var links = row.querySelectorAll('td a[href*="/dcim/locations/"]');
+      if(!links.length) return;
+      var link = links[links.length - 1];
       var match = link.getAttribute('href').match(/\\/dcim\\/locations\\/(\\d+)\\//);
       if(!match) return;
       var zone = ZONE_BY_LOCATION[match[1]];
