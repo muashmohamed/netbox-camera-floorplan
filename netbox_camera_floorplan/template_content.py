@@ -20,6 +20,17 @@ _SCRIPT_TEMPLATE = """
 <script>
 (function(){{
   function applyGrouping(){{
+    // Guard against firing on unrelated NetBox pages — despite this
+    // extension declaring model = "netbox_camera_floorplan.{expected_model}",
+    // its list_buttons() output was observed appearing on core pages too
+    // (e.g. DCIM > Locations, which also happens to have a "Site" column),
+    // inserting blank group-header rows there and visibly breaking that
+    // page's row spacing. Whatever NetBox's actual list_buttons() scoping
+    // does internally, checking the real page URL here is a simple,
+    // directly-verifiable way to make sure this only ever runs on the
+    // one page it's actually meant for.
+    if(window.location.pathname.indexOf('/plugins/camera-floorplan/') === -1) return;
+
     var table = document.querySelector('table.object-list');
     if(!table) return;
     var tbody = table.querySelector('tbody');
@@ -86,12 +97,14 @@ _SCRIPT_TEMPLATE = """
 # Camera Placements: "Site" is embedded as "Site / Location / Floor Plan"
 # text inside the "Floorplan" column.
 _PLACEMENT_SCRIPT = _SCRIPT_TEMPLATE.format(
+    expected_model="cameraplacement",
     match_expr=".indexOf('floorplan') !== -1",
     extract_site_expr="cells[colIndex].textContent.trim().split('/')[0].trim()",
 )
 
 # Floor Plans: "Site" is its own dedicated column.
 _FLOORPLAN_SCRIPT = _SCRIPT_TEMPLATE.format(
+    expected_model="floorplan",
     match_expr=" === 'site'",
     extract_site_expr="cells[colIndex].textContent.trim()",
 )
