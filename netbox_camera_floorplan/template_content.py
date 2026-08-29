@@ -205,11 +205,14 @@ class LocationFloorPlanIndicator(PluginTemplateExtension):
 
       var btn = document.createElement('a');
       btn.href = floorplanUrl;
-      // me-2 (a full 0.5rem gap, not just 0.25rem) deliberately reads as
-      // MORE separated than NetBox's own native buttons are from each
-      // other — this is a plugin addition, not a NetBox-native control,
-      // and shouldn't visually blend in as if it were one.
-      btn.className = 'btn btn-cyan btn-sm me-1';
+      // No margin utility class — NetBox's own adjacent buttons (e.g.
+      // "View elevations" next to the edit/dropdown group) aren't
+      // margin-classed either; they're separated by a plain whitespace
+      // character between elements in the server-rendered HTML. Matching
+      // that exact mechanism (see the text node inserted below) gives
+      // consistent spacing with NetBox's own buttons instead of
+      // approximating it with a Bootstrap margin value.
+      btn.className = 'btn btn-cyan btn-sm';
       btn.title = 'Open this location\\'s Camera Floor Plan';
       btn.innerHTML = '<i class="mdi mdi-floor-plan"></i>';
       // Inserted as a standalone element before NetBox's own buttons,
@@ -217,6 +220,7 @@ class LocationFloorPlanIndicator(PluginTemplateExtension):
       // safer than moving their DOM nodes into a shared container, and
       // keeps this visually and structurally separate as intended.
       actionsCell.insertBefore(btn, actionsCell.firstChild);
+      actionsCell.insertBefore(document.createTextNode(' '), btn.nextSibling);
       row.dataset.cfpFloorplanBtn = 'true';
     }});
   }}
