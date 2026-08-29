@@ -282,13 +282,20 @@ class LocationSecurityZoneIndicator(PluginTemplateExtension):
       badge.className = 'badge text-bg-' + style.color + ' mx-2';
       badge.title = style.description;
       badge.textContent = zone;
-      // insertAdjacentElement('afterend', ...) unambiguously places the
-      // badge immediately after the link element itself, regardless of
-      // what nextSibling happens to resolve to for this specific row's
-      // markup (tree-indentation wrapper elements etc.) — insertBefore()
-      // with link.nextSibling produced an inconsistent/cramped result in
-      // practice, worth avoiding rather than debugging blind.
-      link.insertAdjacentElement('afterend', badge);
+      // NetBox's actual server-rendered markup for this cell has an <a>
+      // nested inside another <a> (both pointing to the same location) —
+      // invalid HTML that browsers silently auto-correct during parsing,
+      // in a way that isn't simply "two siblings in original order."
+      // insertAdjacentElement('afterend', link) technically succeeded
+      // (no error, row.dataset flag got set) but the badge ended up
+      // nowhere visible in the actual live DOM — a direct symptom of
+      // that restructuring. Appending to the cell itself, rather than
+      // positioning relative to either anchor, sidesteps the ambiguity
+      // entirely: wherever the anchors actually ended up, this always
+      // lands the badge visibly at the end of the same cell's content.
+      var nameCell = link.closest('td');
+      if(!nameCell) return;
+      nameCell.appendChild(badge);
       row.dataset.cfpZoneBadge = 'true';
     }});
   }}
