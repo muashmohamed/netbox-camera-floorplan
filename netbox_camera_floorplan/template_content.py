@@ -46,6 +46,30 @@ _SCRIPT_TEMPLATE = """
     var dataRows = Array.from(tbody.querySelectorAll('tr'));
     if(!dataRows.length) return;
 
+    // Physically re-sort rows by site name first, rather than assuming
+    // same-site rows are already adjacent in whatever order NetBox
+    // returned them. NetBox's row order follows each Location's own
+    // internal tree/creation order, not site name — so two unrelated
+    // Locations belonging to the same site (created separately, under
+    // different parent trees) can easily end up with a different site's
+    // row sitting in between them. Grouping only contiguous blocks (the
+    // original approach) silently split back apart every time that
+    // happened again — reparenting Locations fixed one specific instance
+    // but did nothing to stop the next one. Actually sorting here makes
+    // this permanent regardless of how Locations get created in future.
+    var rowsWithSite = dataRows.map(function(row){{
+      var cells = row.querySelectorAll('td');
+      var siteName = cells[colIndex] ? ({extract_site_expr}) : '';
+      return {{ row: row, siteName: siteName || '' }};
+    }});
+    rowsWithSite.sort(function(a, b){{
+      if(a.siteName < b.siteName) return -1;
+      if(a.siteName > b.siteName) return 1;
+      return 0;  // stable sort (guaranteed since ES2019) keeps each site's own rows in their original relative order
+    }});
+    rowsWithSite.forEach(function(entry){{ tbody.appendChild(entry.row); }});
+    dataRows = rowsWithSite.map(function(entry){{ return entry.row; }});
+
     var currentSite = null;
     var groupIndex = 0;
 
