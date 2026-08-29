@@ -21,15 +21,14 @@ _SCRIPT_TEMPLATE = """
 (function(){{
   function applyGrouping(){{
     // Guard against firing on unrelated NetBox pages — despite this
-    // extension declaring model = "netbox_camera_floorplan.{expected_model}",
-    // its list_buttons() output was observed appearing on core pages too
-    // (e.g. DCIM > Locations, which also happens to have a "Site" column),
-    // inserting blank group-header rows there and visibly breaking that
-    // page's row spacing. Whatever NetBox's actual list_buttons() scoping
-    // does internally, checking the real page URL here is a simple,
-    // directly-verifiable way to make sure this only ever runs on the
-    // one page it's actually meant for.
-    if(window.location.pathname.indexOf('/plugins/camera-floorplan/') === -1) return;
+    // extension declaring a specific model, its list_buttons() output
+    // was observed appearing on other pages too (any list with a
+    // matching column name), inserting blank group-header rows there
+    // and visibly breaking that page's row spacing. Whatever NetBox's
+    // actual list_buttons() scoping does internally, checking the real
+    // page URL here is a simple, directly-verifiable way to make sure
+    // this only ever runs on the one page it's actually meant for.
+    if(window.location.pathname.indexOf('{url_guard}') === -1) return;
 
     var table = document.querySelector('table.object-list');
     if(!table) return;
@@ -97,14 +96,24 @@ _SCRIPT_TEMPLATE = """
 # Camera Placements: "Site" is embedded as "Site / Location / Floor Plan"
 # text inside the "Floorplan" column.
 _PLACEMENT_SCRIPT = _SCRIPT_TEMPLATE.format(
-    expected_model="cameraplacement",
+    url_guard="/plugins/camera-floorplan/",
     match_expr=".indexOf('floorplan') !== -1",
     extract_site_expr="cells[colIndex].textContent.trim().split('/')[0].trim()",
 )
 
 # Floor Plans: "Site" is its own dedicated column.
 _FLOORPLAN_SCRIPT = _SCRIPT_TEMPLATE.format(
-    expected_model="floorplan",
+    url_guard="/plugins/camera-floorplan/",
+    match_expr=" === 'site'",
+    extract_site_expr="cells[colIndex].textContent.trim()",
+)
+
+# DCIM Locations (core NetBox page): also has "Site" as its own dedicated
+# column, same shape as the Floor Plans list — added deliberately this
+# time (per explicit request), scoped to exactly this page via its own
+# url_guard, unlike the earlier accidental leak onto this same page.
+_LOCATION_SCRIPT = _SCRIPT_TEMPLATE.format(
+    url_guard="/dcim/locations/",
     match_expr=" === 'site'",
     extract_site_expr="cells[colIndex].textContent.trim()",
 )
@@ -122,6 +131,21 @@ class FloorPlanListGrouping(PluginTemplateExtension):
 
     def list_buttons(self):
         return _FLOORPLAN_SCRIPT
+
+
+class LocationListGrouping(PluginTemplateExtension):
+    """
+    Collapsible site-grouping for the core DCIM Locations list — added
+    deliberately here, unlike the earlier version of this feature which
+    leaked onto this same page by accident (see _SCRIPT_TEMPLATE's
+    url_guard). Genuinely useful on this page too, per explicit request,
+    now scoped correctly instead of an unintended side effect.
+    """
+
+    model = "dcim.location"
+
+    def list_buttons(self):
+        return _LOCATION_SCRIPT
 
 
 class LocationFloorPlanIndicator(PluginTemplateExtension):
@@ -185,7 +209,7 @@ class LocationFloorPlanIndicator(PluginTemplateExtension):
       // MORE separated than NetBox's own native buttons are from each
       // other — this is a plugin addition, not a NetBox-native control,
       // and shouldn't visually blend in as if it were one.
-      btn.className = 'btn btn-cyan btn-sm me-2';
+      btn.className = 'btn btn-cyan btn-sm me-1';
       btn.title = 'Open this location\\'s Camera Floor Plan';
       btn.innerHTML = '<i class="mdi mdi-floor-plan"></i>';
       // Inserted as a standalone element before NetBox's own buttons,
@@ -205,7 +229,7 @@ class LocationFloorPlanIndicator(PluginTemplateExtension):
 """
 
 
-template_extensions = [CameraPlacementListGrouping, FloorPlanListGrouping, LocationFloorPlanIndicator]
+template_extensions = [CameraPlacementListGrouping, FloorPlanListGrouping, LocationListGrouping, LocationFloorPlanIndicator]
 
 # ---------------------------------------------------------------------------
 # Security Zone badges — reads a NetBox-native Custom Field, doesn't define
