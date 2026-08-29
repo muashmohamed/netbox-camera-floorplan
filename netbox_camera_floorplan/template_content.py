@@ -265,12 +265,18 @@ class LocationSecurityZoneIndicator(PluginTemplateExtension):
     var rows = table.querySelectorAll('tbody tr');
     rows.forEach(function(row){{
       if(row.dataset.cfpZoneBadge) return;  // avoid re-adding on repeated htmx refreshes
-      // Same fix as the Floor Plan indicator above — last matching link,
-      // not the first, to avoid attaching to a parent-breadcrumb/toggle
-      // link instead of the row's own name link on nested rows.
-      var links = row.querySelectorAll('td a[href*="/dcim/locations/"]');
-      if(!links.length) return;
-      var link = links[links.length - 1];
+      var cells = row.querySelectorAll('td');
+      // Name is always the second cell (index 1) — index 0 is the
+      // row-select checkbox. Scoping the link search to specifically
+      // THIS cell, and appending back into this SAME cell variable,
+      // means the result can't depend on wherever the browser's
+      // nested-anchor auto-correction actually relocated the anchors to
+      // (which is what broke the previous closest('td') attempt — that
+      // resolved to the actions cell at the far right instead of Name).
+      var nameCell = cells[1];
+      if(!nameCell) return;
+      var link = nameCell.querySelector('a[href*="/dcim/locations/"]');
+      if(!link) return;
       var match = link.getAttribute('href').match(/\\/dcim\\/locations\\/(\\d+)\\//);
       if(!match) return;
       var zone = ZONE_BY_LOCATION[match[1]];
@@ -282,19 +288,6 @@ class LocationSecurityZoneIndicator(PluginTemplateExtension):
       badge.className = 'badge text-bg-' + style.color + ' mx-2';
       badge.title = style.description;
       badge.textContent = zone;
-      // NetBox's actual server-rendered markup for this cell has an <a>
-      // nested inside another <a> (both pointing to the same location) —
-      // invalid HTML that browsers silently auto-correct during parsing,
-      // in a way that isn't simply "two siblings in original order."
-      // insertAdjacentElement('afterend', link) technically succeeded
-      // (no error, row.dataset flag got set) but the badge ended up
-      // nowhere visible in the actual live DOM — a direct symptom of
-      // that restructuring. Appending to the cell itself, rather than
-      // positioning relative to either anchor, sidesteps the ambiguity
-      // entirely: wherever the anchors actually ended up, this always
-      // lands the badge visibly at the end of the same cell's content.
-      var nameCell = link.closest('td');
-      if(!nameCell) return;
       nameCell.appendChild(badge);
       row.dataset.cfpZoneBadge = 'true';
     }});
