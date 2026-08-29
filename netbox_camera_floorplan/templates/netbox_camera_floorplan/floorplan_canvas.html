@@ -698,18 +698,26 @@
 
       document.getElementById('cfp-save-btn').addEventListener('click', () => {
         const dialEl = document.querySelector('#cfp-detail .cfp-direction-dial');
-        cam.direction_degrees = dialEl ? parseInt(dialEl.dataset.degrees, 10) || 0 : cam.direction_degrees;
-        cam.notes = document.getElementById('cfp-notes').value;
+        const pending = {
+          direction_degrees: dialEl ? parseInt(dialEl.dataset.degrees, 10) || 0 : cam.direction_degrees,
+          notes: document.getElementById('cfp-notes').value,
+          power_source_override: getTypePickerValue(document.getElementById('cfp-power-picker')),
+        };
         const typeVal = getTypePickerValue(document.getElementById('cfp-type-picker'));
-        cam.camera_type_id = typeVal ? parseInt(typeVal, 10) : null;
-        cam.power_source_override = getTypePickerValue(document.getElementById('cfp-power-picker'));
+        pending.camera_type_id = typeVal ? parseInt(typeVal, 10) : null;
         if(nvrPicker){
           const nvrVal = getTypePickerValue(nvrPicker);
-          cam.connected_nvr_id = nvrVal ? parseInt(nvrVal, 10) : null;
-          cam.nvr_channel = (channelInput && channelInput.value !== '' && !channelInput.disabled)
+          pending.connected_nvr_id = nvrVal ? parseInt(nvrVal, 10) : null;
+          pending.nvr_channel = (channelInput && channelInput.value !== '' && !channelInput.disabled)
             ? parseInt(channelInput.value, 10) : null;
         }
-        savePlacement(cam);
+        // Deliberately NOT applied to `cam` here — savePlacement() only
+        // commits these onto the real cam object once the server confirms
+        // success. Assigning them here first (the previous behavior) meant
+        // a rejected save (e.g. someone else already took that channel)
+        // left the screen showing your choice as if it had worked, with
+        // nothing to reveal the mismatch short of a manual page refresh.
+        savePlacement(cam, pending);
       });
       document.getElementById('cfp-move-btn').addEventListener('click', () => {
         movingCameraId = (movingCameraId === cam.id) ? null : cam.id;
@@ -740,22 +748,74 @@
     }
   }
 
-  function savePlacement(cam){
+  function updateNvrChannelTracking(oldNvrId, oldChannel, newNvrId, newChannel, deviceName){
+    // Keeps the in-memory `nvrs` list (which drives every open/future
+    // channel-picker's "locked, used by X" display) accurate immediately
+    // after a successful save — without this, a second camera assigned
+    // in the same browser session, before anyone reloads the page,
+    // wouldn't see the channel just claimed by the first as taken,
+    // risking two cameras landing on the same channel.
+    if(oldNvrId != null && oldNvrId !== newNvrId){
+      const oldNvr = nvrById(oldNvrId);
+      if(oldNvr){
+        if(oldNvr.used_channels) delete oldNvr.used_channels[String(oldChannel)];
+        if(oldNvr.usage){ oldNvr.usage.used = Math.max(0, oldNvr.usage.used - 1); oldNvr.usage.available += 1; }
+      }
+    }
+    if(newNvrId != null){
+      const newNvr = nvrById(newNvrId);
+      if(newNvr){
+        newNvr.used_channels = newNvr.used_channels || {};
+        const wasAlreadyOnThisNvr = (oldNvrId === newNvrId);
+        if(wasAlreadyOnThisNvr && oldChannel != null && oldChannel !== newChannel){
+          delete newNvr.used_channels[String(oldChannel)];
+        }
+        if(newChannel != null){
+          newNvr.used_channels[String(newChannel)] = deviceName;
+        }
+        if(!wasAlreadyOnThisNvr && newNvr.usage){
+          newNvr.usage.used += 1;
+          newNvr.usage.available = Math.max(0, newNvr.usage.available - 1);
+        }
+      }
+    }
+  }
+
+  function savePlacement(cam, pending){
+    const oldConnectedNvrId = cam.connected_nvr_id;
+    const oldNvrChannel = cam.nvr_channel;
     fetch(`/plugins/camera-floorplan/floorplans/${floorplanId}/save-camera/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
       body: JSON.stringify({
-        id: cam.id, device_id: cam.device_id, camera_type_id: cam.camera_type_id,
+        id: cam.id, device_id: cam.device_id, camera_type_id: pending.camera_type_id,
         x_pct: cam.x_pct, y_pct: cam.y_pct,
-        direction_degrees: cam.direction_degrees, notes: cam.notes,
-        power_source_override: cam.power_source_override,
-        connected_nvr_id: cam.connected_nvr_id, nvr_channel: cam.nvr_channel,
+        direction_degrees: pending.direction_degrees, notes: pending.notes,
+        power_source_override: pending.power_source_override,
+        connected_nvr_id: pending.connected_nvr_id, nvr_channel: pending.nvr_channel,
       }),
     }).then(r => r.json()).then(data => {
-      if(data.error){ showError(data.error); return; }
+      if(data.error){
+        showError(data.error);
+        // Explicitly re-render the (unchanged) real cam state, so the
+        // form's pickers/fields snap back to what's actually saved
+        // rather than continuing to display the rejected selection —
+        // that mismatch was exactly what made a failed save look
+        // successful until a page refresh revealed otherwise.
+        renderDetail();
+        return;
+      }
       if(data.id) cam.id = data.id;
+      // Only now — confirmed success — do the pending edits become the
+      // real, trusted state of this camera.
+      Object.assign(cam, pending);
+      updateNvrChannelTracking(oldConnectedNvrId, oldNvrChannel, cam.connected_nvr_id, cam.nvr_channel, cam.device_name);
       renderMarkers();
-    }).catch(() => showError('Could not save this device. Please try again.'));
+      renderDetail();
+    }).catch(() => {
+      showError('Could not save this device. Please try again.');
+      renderDetail();
+    });
   }
 
   // ---- Add-camera modal wiring (replaces window.prompt()) ----
