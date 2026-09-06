@@ -108,6 +108,79 @@ class FloorPlan(NetBoxModel):
         ]
 
 
+class EquipmentCategory(NetBoxModel):
+    """
+    An admin-editable equipment category — replaces what used to be a
+    hardcoded Python choices list (CATEGORY_CHOICES on CameraType).
+    Adding a brand-new equipment type (e.g. "Fire Alarm Panel" someday)
+    becomes a plain "Add" click here, not a code change/migration/
+    redeploy cycle.
+
+    `is_hub` and `slot_label_format` are what let this same category
+    system cover both simple standalone devices (Access Point, Switch,
+    UPS — is_hub=False) and capacity-limited hub devices (NVR, Access
+    Control panels — is_hub=True), reusing one shared mechanism
+    (CameraPlacement.connected_hub / hub_slot) instead of duplicating
+    the whole channel/capacity/locked-picker/usage-tracking/delete-
+    warning feature set for every new hub-like category that comes up.
+    """
+
+    name = models.CharField(max_length=50, unique=True)
+    slug = models.SlugField(max_length=50, unique=True)
+    is_camera = models.BooleanField(
+        default=False,
+        verbose_name="is a camera",
+        help_text="Enables Direction and Field of View (the coverage cone) — meaningless for non-camera equipment.",
+    )
+    is_hub = models.BooleanField(
+        default=False,
+        verbose_name="is a hub (has capacity/slots)",
+        help_text=(
+            "Enables channel/slot capacity, a locked slot picker on connected devices, "
+            "live usage tracking, and a delete-time warning listing anything connected to it. "
+            "Examples: NVR (video channels), Access Control panel (door slots). "
+            "Leave unchecked for simple standalone equipment (Access Point, Switch, UPS, Panic Button)."
+        ),
+    )
+    slot_label_format = models.CharField(
+        max_length=20,
+        blank=True,
+        default="{n}",
+        help_text=(
+            'Only used when "is a hub" is checked. A template for how slot numbers are '
+            'displayed — {n} is replaced with the slot number. Examples: "D{n}" for NVR '
+            'channels (shows "D1", "D2"...), "Door {n}" for Access Control (shows "Door 1", '
+            '"Door 2"...).'
+        ),
+    )
+    description = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name = "Equipment Category"
+        verbose_name_plural = "Equipment Categories"
+
+    def __str__(self):
+        return self.name
+
+    def get_absolute_url(self):
+        return reverse("plugins:netbox_camera_floorplan:equipmentcategory_list")
+
+    def format_slot_label(self, slot_number):
+        """Returns e.g. "D5" or "Door 5" for slot_number=5, per this
+        category's own slot_label_format — or just the plain number if
+        no format is set (or this isn't a hub category at all)."""
+        if not self.is_hub or slot_number is None:
+            return None
+        template = self.slot_label_format or "{n}"
+        try:
+            return template.format(n=slot_number)
+        except (KeyError, IndexError):
+            # A malformed format string (e.g. missing {n}) shouldn't
+            # break the whole page — fall back to the plain number.
+            return str(slot_number)
+
+
 class CameraType(NetBoxModel):
     """
     A manageable device type (e.g. Dome, PTZ, Bullet, Fisheye, AP,

@@ -12,6 +12,14 @@ urlpatterns = [
     path("camera-types/<int:pk>/delete/", views.CameraTypeDeleteView.as_view(), name="cameratype_delete"),
     path("camera-types/<int:pk>/changelog/", views.CameraTypeChangeLogView.as_view(), name="cameratype_changelog"),
 
+    # Equipment Categories — admin-editable, replaces what used to be a
+    # hardcoded choices list on CameraType.
+    path("equipment-categories/", views.EquipmentCategoryListView.as_view(), name="equipmentcategory_list"),
+    path("equipment-categories/add/", views.EquipmentCategoryEditView.as_view(), name="equipmentcategory_add"),
+    path("equipment-categories/<int:pk>/edit/", views.EquipmentCategoryEditView.as_view(), name="equipmentcategory_edit"),
+    path("equipment-categories/<int:pk>/delete/", views.EquipmentCategoryDeleteView.as_view(), name="equipmentcategory_delete"),
+    path("equipment-categories/<int:pk>/changelog/", views.EquipmentCategoryChangeLogView.as_view(), name="equipmentcategory_changelog"),
+
     # Device search (used by the "add camera" modal, replaces window.prompt())
     path("device-search/", views.DeviceSearchView.as_view(), name="device_search"),
 

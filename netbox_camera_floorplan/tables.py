@@ -4,7 +4,16 @@ from django.utils.html import format_html, format_html_join
 
 from netbox.tables import ActionsColumn, NetBoxTable
 
-from .models import CameraPlacement, CameraType, FloorPlan
+from .models import CameraPlacement, CameraType, EquipmentCategory, FloorPlan
+
+
+class EquipmentCategoryTable(NetBoxTable):
+    name = tables.Column(linkify=True)
+
+    class Meta(NetBoxTable.Meta):
+        model = EquipmentCategory
+        fields = ("pk", "id", "name", "is_camera", "is_hub", "slot_label_format", "description", "tags")
+        default_columns = ("name", "is_camera", "is_hub", "slot_label_format", "description")
 
 
 class CameraTypeTable(NetBoxTable):

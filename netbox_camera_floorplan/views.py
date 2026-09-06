@@ -15,8 +15,26 @@ from netbox.views import generic
 from netbox.object_actions import BulkDelete, BulkExport, BulkImport
 
 from . import filtersets, forms, tables
-from .models import CameraPlacement, CameraType, FloorPlan
+from .models import CameraPlacement, CameraType, EquipmentCategory, FloorPlan
 from dcim.models import Device
+
+
+class EquipmentCategoryListView(generic.ObjectListView):
+    queryset = EquipmentCategory.objects.all()
+    table = tables.EquipmentCategoryTable
+
+
+class EquipmentCategoryEditView(generic.ObjectEditView):
+    queryset = EquipmentCategory.objects.all()
+    form = forms.EquipmentCategoryForm
+
+
+class EquipmentCategoryDeleteView(generic.ObjectDeleteView):
+    queryset = EquipmentCategory.objects.all()
+
+
+class EquipmentCategoryChangeLogView(generic.ObjectChangeLogView):
+    queryset = EquipmentCategory.objects.all()
 
 
 # ---------------------------------------------------------------------------

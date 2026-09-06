@@ -8,7 +8,13 @@ from dcim.models import Device, Location, Site, SiteGroup
 from netbox.forms import NetBoxModelFilterSetForm, NetBoxModelForm, NetBoxModelImportForm
 from utilities.forms.fields import CSVModelChoiceField, DynamicModelChoiceField, DynamicModelMultipleChoiceField
 
-from .models import CameraPlacement, CameraType, FloorPlan
+from .models import CameraPlacement, CameraType, EquipmentCategory, FloorPlan
+
+
+class EquipmentCategoryForm(NetBoxModelForm):
+    class Meta:
+        model = EquipmentCategory
+        fields = ["name", "slug", "is_camera", "is_hub", "slot_label_format", "description", "tags"]
 
 
 class CameraTypeForm(NetBoxModelForm):
