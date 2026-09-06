@@ -6,18 +6,22 @@ from PIL import Image
 
 from dcim.models import Device, Location, Site, SiteGroup
 from netbox.forms import NetBoxModelFilterSetForm, NetBoxModelForm, NetBoxModelImportForm
-from utilities.forms.fields import CSVModelChoiceField, DynamicModelChoiceField, DynamicModelMultipleChoiceField
+from utilities.forms.fields import CSVModelChoiceField, DynamicModelChoiceField, DynamicModelMultipleChoiceField, SlugField
 
 from .models import CameraPlacement, CameraType, EquipmentCategory, FloorPlan
 
 
 class EquipmentCategoryForm(NetBoxModelForm):
+    slug = SlugField()
+
     class Meta:
         model = EquipmentCategory
         fields = ["name", "slug", "is_camera", "is_hub", "slot_label_format", "description", "tags"]
 
 
 class CameraTypeForm(NetBoxModelForm):
+    slug = SlugField()
+
     class Meta:
         model = CameraType
         fields = ["name", "slug", "category", "preset_icon", "icon_image", "color", "fov_degrees", "channel_capacity", "description", "tags"]
