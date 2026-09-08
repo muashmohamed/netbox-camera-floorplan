@@ -190,37 +190,13 @@ class CameraType(NetBoxModel):
     unrelated DeviceType model (hardware/rack specs) that this must not
     be confused with.
 
-    The category determines which fields actually apply: direction and
-    field-of-view (the coverage cone) only make sense for cameras — an
-    access point or a switch doesn't have a "field of view."
+    `category` is a ForeignKey to EquipmentCategory (an admin-editable
+    table — see that model's docstring), not a hardcoded choices field.
+    It determines which fields actually apply: direction and
+    field-of-view (the coverage cone) only make sense for cameras, and
+    channel/slot capacity only makes sense for hub categories (NVR,
+    Access Control) — an access point or a switch doesn't have either.
     """
-
-    CATEGORY_CAMERA = "camera"
-    CATEGORY_AP = "ap"
-    CATEGORY_ACCESS_CONTROL = "access_control"
-    CATEGORY_SWITCH = "switch"
-    CATEGORY_UPS = "ups"
-    CATEGORY_SERVER = "server"
-    CATEGORY_ROUTER = "router"
-    CATEGORY_FIREWALL = "firewall"
-    CATEGORY_NVR = "nvr"
-    CATEGORY_ONT = "ont"
-    CATEGORY_MODEM = "modem"
-    CATEGORY_OTHER = "other"
-    CATEGORY_CHOICES = [
-        (CATEGORY_CAMERA, "Camera"),
-        (CATEGORY_AP, "Access Point"),
-        (CATEGORY_ACCESS_CONTROL, "Access Control"),
-        (CATEGORY_SWITCH, "Switch"),
-        (CATEGORY_UPS, "UPS"),
-        (CATEGORY_SERVER, "Server"),
-        (CATEGORY_ROUTER, "Router"),
-        (CATEGORY_FIREWALL, "Firewall"),
-        (CATEGORY_NVR, "NVR"),
-        (CATEGORY_ONT, "ONT"),
-        (CATEGORY_MODEM, "Modem"),
-        (CATEGORY_OTHER, "Other"),
-    ]
 
     PRESET_DOME = "dome"
     PRESET_PTZ = "ptz"
@@ -255,18 +231,41 @@ class CameraType(NetBoxModel):
         (PRESET_MODEM, "Modem (built-in)"),
         (PRESET_GENERIC, "Generic device (built-in)"),
     ]
+    # Maps each built-in preset icon to the slug of the EquipmentCategory
+    # it should suggest when picked (e.g. picking the AP icon suggests
+    # the "Access Point" category) — used by the edit-form JS. Kept here,
+    # next to PRESET_CHOICES, so the two lists are edited together.
+    PRESET_SUGGESTED_CATEGORY_SLUG = {
+        PRESET_DOME: "camera",
+        PRESET_BULLET: "camera",
+        PRESET_PTZ: "camera",
+        PRESET_FISHEYE: "camera",
+        PRESET_AP: "ap",
+        PRESET_ACCESS_CONTROL: "access_control",
+        PRESET_SWITCH: "switch",
+        PRESET_UPS: "ups",
+        PRESET_SERVER: "server",
+        PRESET_ROUTER: "router",
+        PRESET_FIREWALL: "firewall",
+        PRESET_NVR: "nvr",
+        PRESET_ONT: "ont",
+        PRESET_MODEM: "modem",
+        PRESET_GENERIC: "camera",
+    }
 
     name = models.CharField(max_length=50, unique=True)
     slug = models.SlugField(max_length=50, unique=True)
-    category = models.CharField(
-        max_length=20,
-        choices=CATEGORY_CHOICES,
-        default=CATEGORY_CAMERA,
+    category = models.ForeignKey(
+        to="EquipmentCategory",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=False,
+        related_name="camera_types",
         help_text=(
             "Determines which fields apply — Direction and Field of View "
-            "(the coverage cone) are Camera-only and hidden for every "
-            "other category, since they don't apply to an AP, switch, "
-            "access control panel, or UPS."
+            "(the coverage cone) are Camera-only, and channel/slot capacity "
+            "is Hub-only (NVR, Access Control) — hidden otherwise, since "
+            "they don't apply to an AP, switch, or UPS."
         ),
     )
     preset_icon = models.CharField(
@@ -306,28 +305,18 @@ class CameraType(NetBoxModel):
     )
     description = models.CharField(max_length=200, blank=True)
 
-    CHANNELS_8 = 8
-    CHANNELS_16 = 16
-    CHANNELS_32 = 32
-    CHANNELS_64 = 64
-    CHANNELS_128 = 128
-    CHANNEL_CAPACITY_CHOICES = [
-        (CHANNELS_8, "8 channels"),
-        (CHANNELS_16, "16 channels"),
-        (CHANNELS_32, "32 channels"),
-        (CHANNELS_64, "64 channels"),
-        (CHANNELS_128, "128 channels"),
-    ]
-    channel_capacity = models.PositiveSmallIntegerField(
-        choices=CHANNEL_CAPACITY_CHOICES,
+    channel_capacity = models.PositiveIntegerField(
         null=True,
         blank=True,
-        verbose_name="channel capacity",
+        validators=[MinValueValidator(1)],
+        verbose_name="channel/slot capacity",
         help_text=(
-            "NVR only — ignored for every other category. The maximum "
-            "number of cameras this NVR model can connect (e.g. a "
-            "'32-channel NVR' accepts up to 32 cameras, each assigned "
-            "its own channel D1-D32)."
+            "Hub categories only (e.g. NVR, Access Control) — ignored for "
+            "every other category. The maximum number of devices this hub "
+            "can connect (e.g. a 32-channel NVR accepts up to 32 cameras; "
+            "a 4-door Access Control panel accepts up to 4 reader/button "
+            "devices). Enter the exact number for your actual hardware — "
+            "no preset list to run out of."
         ),
     )
 
@@ -338,11 +327,11 @@ class CameraType(NetBoxModel):
 
     @property
     def is_camera(self):
-        return self.category == self.CATEGORY_CAMERA
+        return bool(self.category and self.category.is_camera)
 
     @property
-    def is_nvr(self):
-        return self.category == self.CATEGORY_NVR
+    def is_hub(self):
+        return bool(self.category and self.category.is_hub)
 
     def __str__(self):
         return self.name
@@ -442,24 +431,29 @@ class CameraPlacement(NetBoxModel):
         ),
     )
     notes = models.TextField(blank=True)
-    connected_nvr = models.ForeignKey(
+    connected_hub = models.ForeignKey(
         to="self",
         on_delete=models.SET_NULL,
-        related_name="connected_cameras",
+        related_name="connected_devices",
         null=True,
         blank=True,
-        verbose_name="connected NVR",
+        verbose_name="connected hub",
         help_text=(
-            "The NVR (Device Type category = NVR) this camera feeds into. "
-            "Only already-placed NVRs can be selected — place the NVR "
+            "The hub device (Device Type category with \"is a hub\" enabled "
+            "— e.g. NVR, Access Control panel) this device connects into. "
+            "Only already-placed hubs can be selected — place the hub "
             "itself first."
         ),
     )
-    nvr_channel = models.PositiveSmallIntegerField(
+    hub_slot = models.PositiveSmallIntegerField(
         null=True,
         blank=True,
-        verbose_name="NVR channel",
-        help_text="Channel number on the connected NVR (1 = D1, 2 = D2, etc.).",
+        verbose_name="hub slot",
+        help_text=(
+            "Slot/channel number on the connected hub (e.g. NVR channel, "
+            "Access Control door/reader slot) — labeled per that hub's own "
+            "Device Type category (e.g. \"D1\", \"Door 1\")."
+        ),
     )
 
     class Meta:
@@ -472,9 +466,9 @@ class CameraPlacement(NetBoxModel):
                 name="unique_device_placement",
             ),
             models.UniqueConstraint(
-                fields=["connected_nvr", "nvr_channel"],
-                condition=models.Q(connected_nvr__isnull=False),
-                name="unique_nvr_channel_assignment",
+                fields=["connected_hub", "hub_slot"],
+                condition=models.Q(connected_hub__isnull=False),
+                name="unique_hub_slot_assignment",
             ),
         ]
 
@@ -488,7 +482,7 @@ class CameraPlacement(NetBoxModel):
     def is_placed(self):
         """
         False for a device added via CSV import that hasn't been dragged
-        onto the canvas yet — it exists (floor plan, device, NVR/channel
+        onto the canvas yet — it exists (floor plan, device, hub/slot
         assignment all already set) but has no x/y position.
         """
         return self.x_pct is not None and self.y_pct is not None
@@ -499,64 +493,73 @@ class CameraPlacement(NetBoxModel):
         super().clean()
         errors = {}
 
-        if self.connected_nvr_id and self.pk and self.connected_nvr_id == self.pk:
-            errors["connected_nvr"] = "A device cannot be connected to itself as its NVR."
+        if self.connected_hub_id and self.pk and self.connected_hub_id == self.pk:
+            errors["connected_hub"] = "A device cannot be connected to itself as its hub."
 
-        if self.connected_nvr_id:
-            nvr_type = getattr(self.connected_nvr, "camera_type", None)
-            if not nvr_type or not nvr_type.is_nvr:
-                errors["connected_nvr"] = (
-                    "The selected device isn't an NVR (its Device Type's category must be \"NVR\")."
+        if self.connected_hub_id:
+            hub_type = getattr(self.connected_hub, "camera_type", None)
+            if not hub_type or not hub_type.is_hub:
+                errors["connected_hub"] = (
+                    "The selected device isn't a hub (its Device Type's category must "
+                    "have \"is a hub\" enabled, e.g. NVR or Access Control)."
                 )
-            if self.nvr_channel is None:
-                errors.setdefault("nvr_channel", "A channel number is required when connecting to an NVR.")
-            elif nvr_type and nvr_type.channel_capacity and self.nvr_channel > nvr_type.channel_capacity:
-                errors["nvr_channel"] = (
-                    f"Channel {self.nvr_channel} exceeds this NVR's capacity "
-                    f"({nvr_type.channel_capacity} channels, D1-D{nvr_type.channel_capacity})."
+            if self.hub_slot is None:
+                errors.setdefault("hub_slot", "A slot number is required when connecting to a hub.")
+            elif hub_type and hub_type.channel_capacity and self.hub_slot > hub_type.channel_capacity:
+                errors["hub_slot"] = (
+                    f"Slot {self.hub_slot} exceeds this hub's capacity "
+                    f"({hub_type.channel_capacity})."
                 )
-            elif self.nvr_channel is not None and self.nvr_channel < 1:
-                errors["nvr_channel"] = "Channel number must be 1 or greater."
-        elif self.nvr_channel is not None:
-            errors["nvr_channel"] = "A channel number requires a connected NVR to also be set."
+            elif self.hub_slot is not None and self.hub_slot < 1:
+                errors["hub_slot"] = "Slot number must be 1 or greater."
+        elif self.hub_slot is not None:
+            errors["hub_slot"] = "A slot number requires a connected hub to also be set."
 
         if errors:
             raise ValidationError(errors)
 
-    def get_channel_label(self):
-        """Returns e.g. "D5" for nvr_channel=5, or None if unset."""
-        if self.nvr_channel is None:
+    def get_hub_slot_label(self):
+        """
+        Returns e.g. "D5" or "Door 5" for hub_slot=5, formatted per the
+        CONNECTED HUB's own category's slot_label_format (not this
+        placement's own category) — or None if unset.
+        """
+        if self.hub_slot is None:
             return None
-        return f"D{self.nvr_channel}"
+        hub_type = getattr(self.connected_hub, "camera_type", None)
+        hub_category = getattr(hub_type, "category", None)
+        if hub_category:
+            return hub_category.format_slot_label(self.hub_slot)
+        return str(self.hub_slot)
 
-    def get_nvr_channel_usage(self):
+    def get_hub_slot_usage(self):
         """
-        For a placement whose own Device Type category is NVR: how many
-        of its channels are currently claimed by cameras pointing at it,
-        out of its total capacity. Returns None if this placement isn't
-        an NVR or has no capacity configured.
+        For a placement whose own Device Type category is a hub (NVR,
+        Access Control, ...): how many of its slots are currently claimed
+        by devices pointing at it, out of its total capacity. Returns
+        None if this placement isn't a hub or has no capacity configured.
         """
-        if not self.camera_type or not self.camera_type.is_nvr or not self.camera_type.channel_capacity:
+        if not self.camera_type or not self.camera_type.is_hub or not self.camera_type.channel_capacity:
             return None
         capacity = self.camera_type.channel_capacity
-        used = self.connected_cameras.count()
+        used = self.connected_devices.count()
         return {"used": used, "capacity": capacity, "available": max(capacity - used, 0)}
 
-    def get_nvr_channel_assignments(self):
+    def get_hub_slot_assignments(self):
         """
-        For a placement whose own Device Type category is NVR: which
-        channel numbers are currently claimed and by which device — e.g.
-        {3: "CAM-ENTRANCE-01", 5: "CAM-LOBBY-02"}. Used to build a channel
+        For a placement whose own Device Type category is a hub: which
+        slot numbers are currently claimed and by which device — e.g.
+        {3: "CAM-ENTRANCE-01", 5: "READER-DOOR-02"}. Used to build a slot
         picker that locks already-taken numbers instead of letting a
-        second camera silently collide with one (caught by the
+        second device silently collide with one (caught by the
         UniqueConstraint on save, but far better to prevent the pick in
-        the first place). Returns {} if this placement isn't an NVR.
+        the first place). Returns {} if this placement isn't a hub.
         """
-        if not self.camera_type or not self.camera_type.is_nvr:
+        if not self.camera_type or not self.camera_type.is_hub:
             return {}
         return {
-            cam.nvr_channel: cam.device.name
-            for cam in self.connected_cameras.select_related("device").exclude(nvr_channel__isnull=True)
+            dev.hub_slot: dev.device.name
+            for dev in self.connected_devices.select_related("device").exclude(hub_slot__isnull=True)
         }
 
     # ---- Live lookups against NetBox's own connection data ----
@@ -630,19 +633,19 @@ class CameraPlacement(NetBoxModel):
 
 
 @receiver(pre_delete, sender=CameraPlacement)
-def clear_orphaned_nvr_channel(sender, instance, **kwargs):
+def clear_orphaned_hub_slot(sender, instance, **kwargs):
     """
-    connected_nvr uses on_delete=SET_NULL, which only clears that FK field
-    on affected cameras — it leaves nvr_channel (a plain integer, not
-    itself an FK) holding its old value, producing a confusing
-    half-orphaned state: "Connected NVR: —" next to "NVR Channel: D5".
+    connected_hub uses on_delete=SET_NULL, which only clears that FK field
+    on affected devices — it leaves hub_slot (a plain integer, not itself
+    an FK) holding its old value, producing a confusing half-orphaned
+    state: "Connected hub: —" next to "Hub slot: 5".
 
     A signal — rather than overriding this model's own delete() method —
     is what's needed here: BulkDeleteView and other bulk queryset.delete()
     paths skip custom delete() overrides entirely (a well-known Django
     gotcha), but Django still fires pre_delete/post_delete signals per
     row even during a bulk delete, so this stays correct regardless of
-    whether the NVR is removed via the single-row action or bulk delete.
+    whether the hub is removed via the single-row action or bulk delete.
     """
-    if instance.camera_type_id and instance.camera_type.is_nvr:
-        instance.connected_cameras.update(nvr_channel=None)
+    if instance.camera_type_id and instance.camera_type.is_hub:
+        instance.connected_devices.update(hub_slot=None)

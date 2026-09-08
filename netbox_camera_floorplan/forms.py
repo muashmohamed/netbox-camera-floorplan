@@ -21,6 +21,10 @@ class EquipmentCategoryForm(NetBoxModelForm):
 
 class CameraTypeForm(NetBoxModelForm):
     slug = SlugField()
+    category = DynamicModelChoiceField(
+        queryset=EquipmentCategory.objects.all(),
+        help_text="Manage available categories under Plugins → Equipment Categories.",
+    )
 
     class Meta:
         model = CameraType
@@ -262,23 +266,23 @@ class CameraPlacementFilterForm(NetBoxModelFilterSetForm):
 
 class CameraPlacementImportForm(NetBoxModelImportForm):
     """
-    Bulk CSV import for devices (cameras, NVRs, APs, etc.) — deliberately
-    does NOT accept x_pct/y_pct: canvas placement stays a manual,
-    click-to-place step. A row imported here shows up in that floor
-    plan's "Unplaced devices" list until someone drags/clicks it onto
-    the actual image.
+    Bulk CSV import for devices (cameras, NVRs, access control panels,
+    readers, APs, etc.) — deliberately does NOT accept x_pct/y_pct:
+    canvas placement stays a manual, click-to-place step. A row imported
+    here shows up in that floor plan's "Unplaced devices" list until
+    someone drags/clicks it onto the actual image.
 
-    Both `device` and `connected_nvr` are resolved against real NetBox
+    Both `device` and `connected_hub` are resolved against real NetBox
     devices by name — never free text — consistent with how every other
-    device lookup in this plugin works. `connected_nvr` is a two-hop
-    lookup: the CSV cell holds the NVR's own device name, which is
+    device lookup in this plugin works. `connected_hub` is a two-hop
+    lookup: the CSV cell holds the hub's own device name, which is
     resolved here to the CameraPlacement wrapping that device (the
-    actual target of the connected_nvr FK).
+    actual target of the connected_hub FK).
 
-    Column order matters for combined imports: if an NVR and the cameras
-    that reference it are in the same CSV, the NVR's row must come
-    before its cameras' rows, since connected_nvr can only resolve to an
-    NVR that already has a placement (either from an earlier row in
+    Column order matters for combined imports: if a hub and the devices
+    that reference it are in the same CSV, the hub's row must come
+    before its devices' rows, since connected_hub can only resolve to a
+    hub that already has a placement (either from an earlier row in
     this same file, or one placed earlier through the canvas).
     """
 
@@ -297,16 +301,16 @@ class CameraPlacementImportForm(NetBoxModelImportForm):
     floorplan = forms.CharField(
         help_text='Which floor plan this device belongs to, formatted exactly as it appears in the UI: "Site / Name" or "Site / Location / Name".',
     )
-    connected_nvr = forms.CharField(
+    connected_hub = forms.CharField(
         required=False,
-        label="Connected NVR",
-        help_text="Device name of an already-placed NVR (leave blank if this row isn't a camera, or has no NVR yet).",
+        label="Connected hub",
+        help_text="Device name of an already-placed hub (NVR, Access Control panel, etc.) — leave blank if this row has no hub yet.",
     )
 
     class Meta:
         model = CameraPlacement
         fields = [
-            "device", "camera_type", "floorplan", "connected_nvr", "nvr_channel",
+            "device", "camera_type", "floorplan", "connected_hub", "hub_slot",
             "power_source_override", "notes", "tags",
         ]
 
@@ -330,18 +334,18 @@ class CameraPlacementImportForm(NetBoxModelImportForm):
             raise forms.ValidationError(f'No floor plan matches "{raw}".')
         return floorplan
 
-    def clean_connected_nvr(self):
-        raw = self.cleaned_data.get("connected_nvr", "").strip()
+    def clean_connected_hub(self):
+        raw = self.cleaned_data.get("connected_hub", "").strip()
         if not raw:
             return None
         placement = (
-            CameraPlacement.objects.filter(device__name=raw, camera_type__category=CameraType.CATEGORY_NVR)
+            CameraPlacement.objects.filter(device__name=raw, camera_type__category__is_hub=True)
             .select_related("camera_type")
             .first()
         )
         if not placement:
             raise forms.ValidationError(
-                f'"{raw}" isn\'t an already-placed NVR. Place the NVR itself first '
-                f"(or, in this same CSV, put its row before any camera that references it)."
+                f'"{raw}" isn\'t an already-placed hub. Place the hub itself first '
+                f"(or, in this same CSV, put its row before any device that references it)."
             )
         return placement

@@ -51,6 +51,15 @@ class CameraTypeEditView(generic.ObjectEditView):
     queryset = CameraType.objects.all()
     form = forms.CameraTypeForm
 
+    def get_extra_context(self, request, instance=None):
+        context = super().get_extra_context(request, instance) if hasattr(super(), "get_extra_context") else {}
+        context["equipment_categories_json"] = json.dumps([
+            {"id": c.pk, "slug": c.slug, "is_camera": c.is_camera, "is_hub": c.is_hub}
+            for c in EquipmentCategory.objects.all()
+        ])
+        context["preset_category_slugs_json"] = json.dumps(CameraType.PRESET_SUGGESTED_CATEGORY_SLUG)
+        return context
+
     def post(self, request, *args, **kwargs):
         try:
             return super().post(request, *args, **kwargs)
@@ -171,8 +180,8 @@ class CameraPlacementListView(generic.ObjectListView):
         .annotate(
             needs_nvr=models.Case(
                 models.When(
-                    camera_type__category=CameraType.CATEGORY_CAMERA,
-                    connected_nvr__isnull=True,
+                    camera_type__category__is_camera=True,
+                    connected_hub__isnull=True,
                     then=models.Value(0),
                 ),
                 default=models.Value(1),
@@ -196,29 +205,30 @@ class CameraPlacementDeleteView(generic.ObjectDeleteView):
         # runs unconditionally before the page renders, so the warning
         # can't silently fail to appear regardless of template internals.
         instance = get_object_or_404(self.queryset, pk=kwargs.get("pk"))
-        # connected_nvr uses on_delete=SET_NULL — deleting an NVR never
-        # deletes or breaks its cameras, it just clears their NVR/channel
-        # link (they'll show up flagged "Needs NVR" in the placements list
-        # afterward). That's a safe default, but still worth flagging
-        # explicitly here so it's never a silent surprise at the moment of
-        # deletion, not just something discoverable after the fact.
-        if instance.camera_type and instance.camera_type.is_nvr:
-            connected = list(instance.connected_cameras.select_related("device")[:10])
-            total = instance.connected_cameras.count()
+        # connected_hub uses on_delete=SET_NULL — deleting a hub never
+        # deletes or breaks its connected devices, it just clears their
+        # hub/slot link (they'll show up flagged "Needs NVR" in the
+        # placements list afterward, if they're camera-category). That's
+        # a safe default, but still worth flagging explicitly here so
+        # it's never a silent surprise at the moment of deletion, not
+        # just something discoverable after the fact.
+        if instance.camera_type and instance.camera_type.is_hub:
+            connected = list(instance.connected_devices.select_related("device")[:10])
+            total = instance.connected_devices.count()
             if total:
                 names = ", ".join(c.device.name for c in connected)
                 if total > len(connected):
                     names += f", and {total - len(connected)} more"
                 messages.warning(
                     request,
-                    f"This NVR has {total} connected camera(s): {names}. Deleting it will "
-                    f"clear their NVR/channel assignment — the cameras themselves won't be "
-                    f"deleted, but they'll need a new NVR assigned afterward.",
+                    f"This hub has {total} connected device(s): {names}. Deleting it will "
+                    f"clear their hub/slot assignment — the devices themselves won't be "
+                    f"deleted, but they'll need a new hub assigned afterward.",
                 )
         return super().get(request, *args, **kwargs)
 
     def post(self, request, *args, **kwargs):
-        # The pre_delete signal (models.py: clear_orphaned_nvr_channel)
+        # The pre_delete signal (models.py: clear_orphaned_hub_slot)
         # verified correct in isolation via a direct instance.delete()
         # call, but observed NOT firing when triggered through this exact
         # view's actual delete flow in practice — NetBox's ObjectDeleteView
@@ -231,8 +241,8 @@ class CameraPlacementDeleteView(generic.ObjectDeleteView):
         # underneath. The signal stays in place too, as a harmless second
         # layer for any other path that does use a normal .delete() call.
         instance = get_object_or_404(self.queryset, pk=kwargs.get("pk"))
-        if instance.camera_type and instance.camera_type.is_nvr:
-            instance.connected_cameras.update(nvr_channel=None)
+        if instance.camera_type and instance.camera_type.is_hub:
+            instance.connected_devices.update(hub_slot=None)
         return super().post(request, *args, **kwargs)
 
 
@@ -247,12 +257,12 @@ class CameraPlacementBulkDeleteView(generic.BulkDeleteView):
         # signal alone for this.
         pks = request.POST.getlist("pk")
         if pks:
-            nvr_ids = list(
-                self.queryset.filter(pk__in=pks, camera_type__category=CameraType.CATEGORY_NVR)
+            hub_ids = list(
+                self.queryset.filter(pk__in=pks, camera_type__category__is_hub=True)
                 .values_list("pk", flat=True)
             )
-            if nvr_ids:
-                CameraPlacement.objects.filter(connected_nvr_id__in=nvr_ids).update(nvr_channel=None)
+            if hub_ids:
+                CameraPlacement.objects.filter(connected_hub_id__in=hub_ids).update(hub_slot=None)
         return super().post(request, *args, **kwargs)
 
 
@@ -338,10 +348,10 @@ def _build_canvas_context(request, floorplan, camera_only=False, force_read_only
     internal network topology or admin notes that could contain anything.
     """
     placements = floorplan.cameras.select_related(
-        "device", "device__primary_ip4", "camera_type", "connected_nvr__device"
+        "device", "device__primary_ip4", "camera_type", "connected_hub__device"
     )
     if camera_only:
-        placements = placements.filter(camera_type__category=CameraType.CATEGORY_CAMERA)
+        placements = placements.filter(camera_type__category__is_camera=True)
 
     camera_data = []
     unplaced_data = []
@@ -365,10 +375,10 @@ def _build_canvas_context(request, floorplan, camera_only=False, force_read_only
             "power_source_override": "" if restricted else cam.power_source_override,
             "notes": "" if restricted else cam.notes,
             "reachability": cam.get_reachability(),
-            "connected_nvr_id": None if restricted else cam.connected_nvr_id,
-            "nvr_channel": None if restricted else cam.nvr_channel,
-            "channel_label": None if restricted else cam.get_channel_label(),
-            "nvr_channel_usage": cam.get_nvr_channel_usage(),
+            "connected_hub_id": None if restricted else cam.connected_hub_id,
+            "hub_slot": None if restricted else cam.hub_slot,
+            "hub_slot_label": None if restricted else cam.get_hub_slot_label(),
+            "hub_slot_usage": cam.get_hub_slot_usage(),
             "uplinks": [
                 {
                     "local_interface": str(local_if),
@@ -386,12 +396,12 @@ def _build_canvas_context(request, floorplan, camera_only=False, force_read_only
         else:
             unplaced_data.append(entry)
 
-    camera_type_qs = CameraType.objects.all()
+    camera_type_qs = CameraType.objects.select_related("category").all()
     if camera_only:
         # The CCTV view only ever shows camera-category placements, so
-        # the Device Type list backing it doesn't need NVR/switch/etc.
+        # the Device Type list backing it doesn't need hub/switch/etc.
         # types either — nothing in the read-only UI could reference them.
-        camera_type_qs = camera_type_qs.filter(category=CameraType.CATEGORY_CAMERA)
+        camera_type_qs = camera_type_qs.filter(category__is_camera=True)
     camera_types = [
         {
             "id": ct.pk,
@@ -399,39 +409,44 @@ def _build_canvas_context(request, floorplan, camera_only=False, force_read_only
             "color": ct.color,
             "icon_url": ct.get_icon_url(),
             "fov_degrees": ct.fov_degrees,
-            "category": ct.category,
+            "category_id": ct.category_id,
+            "category_slug": ct.category.slug if ct.category else None,
             "is_camera": ct.is_camera,
-            "is_nvr": ct.is_nvr,
+            "is_hub": ct.is_hub,
             "channel_capacity": ct.channel_capacity,
         }
         for ct in camera_type_qs
     ]
 
-    # Every placed NVR across ALL floor plans, not just this one — an
-    # NVR is often in a different room/rack than the cameras feeding
-    # into it, so a camera here needs to be able to point at an NVR
-    # placed elsewhere. Suppressed entirely for the restricted CCTV view
-    # (not just left unreferenced) — even though no camera there would
-    # display it, leaving real NVR device names sitting in the raw page
+    # Every placed hub across ALL floor plans, not just this one — a hub
+    # is often in a different room/rack than the devices feeding into
+    # it, so a device here needs to be able to point at a hub placed
+    # elsewhere. Suppressed entirely for the restricted CCTV view (not
+    # just left unreferenced) — even though no camera there would
+    # display it, leaving real hub device names sitting in the raw page
     # JSON would defeat the point of suppressing them in the first place.
     if restricted:
-        nvr_data = []
+        hub_data = []
     else:
-        nvr_placements = (
-            CameraPlacement.objects.filter(camera_type__category=CameraType.CATEGORY_NVR)
-            .select_related("device", "camera_type", "floorplan")
+        hub_placements = (
+            CameraPlacement.objects.filter(camera_type__category__is_hub=True)
+            .select_related("device", "camera_type__category", "floorplan")
         )
-        nvr_data = [
+        hub_data = [
             {
-                "id": nvr.pk,
-                "device_name": nvr.device.name,
-                "floorplan_id": nvr.floorplan_id,
-                "floorplan_name": str(nvr.floorplan),
-                "capacity": nvr.camera_type.channel_capacity if nvr.camera_type else None,
-                "usage": nvr.get_nvr_channel_usage(),
-                "used_channels": nvr.get_nvr_channel_assignments(),
+                "id": hub.pk,
+                "device_name": hub.device.name,
+                "floorplan_id": hub.floorplan_id,
+                "floorplan_name": str(hub.floorplan),
+                "capacity": hub.camera_type.channel_capacity if hub.camera_type else None,
+                "slot_label_format": (
+                    hub.camera_type.category.slot_label_format
+                    if hub.camera_type and hub.camera_type.category else "{n}"
+                ),
+                "usage": hub.get_hub_slot_usage(),
+                "used_slots": hub.get_hub_slot_assignments(),
             }
-            for nvr in nvr_placements
+            for hub in hub_placements
         ]
 
     if force_read_only:
@@ -445,7 +460,7 @@ def _build_canvas_context(request, floorplan, camera_only=False, force_read_only
         "cameras_json": json.dumps(camera_data),
         "unplaced_json": json.dumps(unplaced_data),
         "camera_types_json": json.dumps(camera_types),
-        "nvrs_json": json.dumps(nvr_data),
+        "hubs_json": json.dumps(hub_data),
         "can_edit": can_edit,
         "restricted": restricted,
     }
@@ -507,11 +522,11 @@ class CameraPlacementSaveView(PermissionRequiredMixin, View):
         if camera_type_id:
             camera_type = get_object_or_404(CameraType, pk=camera_type_id)
 
-        connected_nvr_id = payload.get("connected_nvr_id")
-        connected_nvr = None
-        if connected_nvr_id:
-            connected_nvr = get_object_or_404(CameraPlacement, pk=connected_nvr_id)
-        nvr_channel = payload.get("nvr_channel") or None
+        connected_hub_id = payload.get("connected_hub_id")
+        connected_hub = None
+        if connected_hub_id:
+            connected_hub = get_object_or_404(CameraPlacement, pk=connected_hub_id)
+        hub_slot = payload.get("hub_slot") or None
 
         def build_error_response(exc):
             """
@@ -565,10 +580,10 @@ class CameraPlacementSaveView(PermissionRequiredMixin, View):
             placement.direction_degrees = direction
             placement.power_source_override = payload.get("power_source_override", placement.power_source_override)
             placement.notes = payload.get("notes", placement.notes)
-            if "connected_nvr_id" in payload:
-                placement.connected_nvr = connected_nvr
-            if "nvr_channel" in payload:
-                placement.nvr_channel = nvr_channel
+            if "connected_hub_id" in payload:
+                placement.connected_hub = connected_hub
+            if "hub_slot" in payload:
+                placement.hub_slot = hub_slot
             try:
                 placement.full_clean()
                 placement.save()
@@ -587,8 +602,8 @@ class CameraPlacementSaveView(PermissionRequiredMixin, View):
                     direction_degrees=direction,
                     power_source_override=payload.get("power_source_override", ""),
                     notes=payload.get("notes", ""),
-                    connected_nvr=connected_nvr,
-                    nvr_channel=nvr_channel,
+                    connected_hub=connected_hub,
+                    hub_slot=hub_slot,
                 )
                 placement.full_clean()
                 placement.save()
@@ -603,7 +618,7 @@ class CameraPlacementUnplaceView(PermissionRequiredMixin, View):
     """
     "Remove from canvas" — clears x/y so the marker disappears from the
     floor plan image, but keeps the CameraPlacement row itself intact
-    (device, camera type, connected NVR, channel, notes all preserved).
+    (device, camera type, connected hub, slot, notes all preserved).
     It reappears in that floor plan's "Unplaced devices" list, same as a
     CSV-imported row that's never been placed yet.
 

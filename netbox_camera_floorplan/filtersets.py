@@ -80,7 +80,7 @@ class CameraPlacementFilterSet(NetBoxModelFilterSet):
         label="Placed on canvas",
     )
     # Same "isn't a real column" situation as is_placed: "needs an NVR"
-    # means camera-category AND connected_nvr is null. Non-camera types
+    # means camera-category AND connected_hub is null. Non-camera types
     # (NVR/switch/AP/etc.) never "need" one, so they're excluded from
     # both sides of this filter rather than counted as satisfying either.
     needs_nvr = django_filters.BooleanFilter(
@@ -97,7 +97,7 @@ class CameraPlacementFilterSet(NetBoxModelFilterSet):
 
     class Meta:
         model = CameraPlacement
-        fields = ("id", "floorplan", "device", "camera_type", "connected_nvr")
+        fields = ("id", "floorplan", "device", "camera_type", "connected_hub")
 
     def filter_is_placed(self, queryset, name, value):
         if value:
@@ -105,17 +105,17 @@ class CameraPlacementFilterSet(NetBoxModelFilterSet):
         return queryset.filter(Q(x_pct__isnull=True) | Q(y_pct__isnull=True))
 
     def filter_needs_nvr(self, queryset, name, value):
-        camera_without_nvr = Q(camera_type__category=CameraType.CATEGORY_CAMERA, connected_nvr__isnull=True)
+        camera_without_hub = Q(camera_type__category__is_camera=True, connected_hub__isnull=True)
         if value:
-            return queryset.filter(camera_without_nvr)
-        return queryset.exclude(camera_without_nvr)
+            return queryset.filter(camera_without_hub)
+        return queryset.exclude(camera_without_hub)
 
     def filter_needs_attention(self, queryset, name, value):
         not_placed = Q(x_pct__isnull=True) | Q(y_pct__isnull=True)
-        camera_without_nvr = Q(camera_type__category=CameraType.CATEGORY_CAMERA, connected_nvr__isnull=True)
+        camera_without_hub = Q(camera_type__category__is_camera=True, connected_hub__isnull=True)
         if value:
-            return queryset.filter(not_placed | camera_without_nvr)
-        return queryset.exclude(not_placed | camera_without_nvr)
+            return queryset.filter(not_placed | camera_without_hub)
+        return queryset.exclude(not_placed | camera_without_hub)
 
     def search(self, queryset, name, value):
         if not value.strip():

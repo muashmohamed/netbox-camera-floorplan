@@ -28,7 +28,7 @@ class CameraTypeTable(NetBoxTable):
         default_columns = ("name", "category", "icon_preview", "swatch", "fov_degrees", "channel_capacity", "description")
 
     def render_category(self, value, record):
-        return record.get_category_display()
+        return str(value) if value else "—"
 
     def render_fov_degrees(self, value, record):
         # Stored value is meaningless for non-camera types (only the
@@ -40,12 +40,13 @@ class CameraTypeTable(NetBoxTable):
         # already says "(°)".
         return value if record.is_camera else "—"
 
-    def render_channel_capacity(self, value):
-        # `value` here is already the human label from CHANNEL_CAPACITY_CHOICES
-        # ("8 channels", not the raw int 8) — django-tables2 renders
-        # choice-field columns via their display label automatically, so
-        # appending " channels" again produced "8 channels channels".
-        return value if value else "—"
+    def render_channel_capacity(self, value, record):
+        # channel_capacity is a plain integer now (not a choices field),
+        # so `value` is already the raw number — only meaningful for hub
+        # categories (NVR, Access Control).
+        if not value or not record.is_hub:
+            return "—"
+        return str(value)
 
     def render_icon_preview(self, record):
         icon_url = record.get_icon_url()
@@ -163,9 +164,9 @@ class CameraPlacementTable(NetBoxTable):
         empty_values=(), orderable=False, verbose_name="Placed",
         accessor="pk",  # dummy; render_placed does the real work
     )
-    connected_nvr = tables.Column(verbose_name="Connected NVR", empty_values=())
+    connected_hub = tables.Column(verbose_name="Connected Hub", empty_values=())
     channel = tables.Column(
-        empty_values=(), orderable=False, accessor="nvr_channel",
+        empty_values=(), orderable=False, accessor="hub_slot",
     )
     # No "edit" action here on purpose — a placement's position (x/y) can
     # only be set meaningfully by clicking on the floor plan canvas, not
@@ -183,13 +184,13 @@ class CameraPlacementTable(NetBoxTable):
             "camera_type",
             "placed",
             "reachability",
-            "connected_nvr",
+            "connected_hub",
             "channel",
             "direction_degrees",
             "power_source_override",
             "tags",
         )
-        default_columns = ("device", "floorplan", "camera_type", "placed", "reachability", "connected_nvr", "channel", "power_source_override")
+        default_columns = ("device", "floorplan", "camera_type", "placed", "reachability", "connected_hub", "channel", "power_source_override")
 
     def render_reachability(self, record):
         status = record.get_reachability_status()
@@ -213,25 +214,25 @@ class CameraPlacementTable(NetBoxTable):
             url, "Unplaced",
         )
 
-    def render_connected_nvr(self, value, record):
+    def render_connected_hub(self, value, record):
         if value:
             return format_html('<a href="{}">{}</a>', value.get_absolute_url(), str(value))
         if record.camera_type and record.camera_type.is_camera:
             return format_html(
-                '<span class="badge text-bg-orange" title="This camera isn\'t linked to any NVR/channel yet">{}</span>',
+                '<span class="badge text-bg-orange" title="This camera isn\'t linked to any NVR/hub yet">{}</span>',
                 "Needs NVR",
             )
-        # Not a camera (NVR/switch/AP/etc.) — the field genuinely doesn't
+        # Not a camera (hub/switch/AP/etc.) — the field genuinely doesn't
         # apply, so no badge, just the same blank dash as any other N/A cell.
         return "—"
 
     def render_channel(self, record):
-        if record.camera_type and record.camera_type.is_nvr:
-            usage = record.get_nvr_channel_usage()
+        if record.camera_type and record.camera_type.is_hub:
+            usage = record.get_hub_slot_usage()
             if usage:
                 return format_html(
-                    '<span title="{} of {} channels used">{}/{} used</span>',
+                    '<span title="{} of {} slots used">{}/{} used</span>',
                     usage["used"], usage["capacity"], usage["used"], usage["capacity"],
                 )
-            return "—"  # NVR type with no channel_capacity configured
-        return record.get_channel_label() or "—"
+            return "—"  # hub type with no channel_capacity configured
+        return record.get_hub_slot_label() or "—"

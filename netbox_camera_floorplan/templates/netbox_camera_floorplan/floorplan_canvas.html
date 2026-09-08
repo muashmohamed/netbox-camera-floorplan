@@ -83,7 +83,7 @@
       No camera types yet? <a href="{% url 'plugins:netbox_camera_floorplan:cameratype_add' %}">Add one</a> first, then come back here.
     </p>
     <p class="text-muted small">
-      Adding many devices at once? <a href="{% url 'plugins:netbox_camera_floorplan:cameraplacement_bulk_import' %}">Bulk import via CSV</a> — device, device type, and NVR/channel assignment all in one go (position is still set manually here afterward).
+      Adding many devices at once? <a href="{% url 'plugins:netbox_camera_floorplan:cameraplacement_bulk_import' %}">Bulk import via CSV</a> — device, device type, and hub/slot assignment all in one go (position is still set manually here afterward).
     </p>
     {% endif %}
   </div>
@@ -129,7 +129,7 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <p>This removes the marker's position and moves it to this floor plan's "Unplaced devices" list. Its device type, connected NVR, channel, and notes are all kept — nothing is deleted.</p>
+        <p>This removes the marker's position and moves it to this floor plan's "Unplaced devices" list. Its device type, connected hub, slot, and notes are all kept — nothing is deleted.</p>
         <p class="text-muted small mb-0">To permanently delete this placement instead, use the trash icon on the Device Placements list.</p>
       </div>
       <div class="modal-footer">
@@ -229,8 +229,8 @@
   const canEdit = {{ can_edit|yesno:"true,false" }};
   let cameras = {{ cameras_json|safe }};
   let unplaced = {{ unplaced_json|safe }}; // devices imported via CSV — no x/y yet, awaiting a manual canvas click
-  const cameraTypes = {{ camera_types_json|safe }}; // [{id, name, color, icon_url, is_nvr, channel_capacity}, ...]
-  const nvrs = {{ nvrs_json|safe }}; // every already-placed NVR across ALL floor plans: [{id, device_name, floorplan_id, floorplan_name, capacity, usage}, ...]
+  const cameraTypes = {{ camera_types_json|safe }}; // [{id, name, color, icon_url, is_camera, is_hub, channel_capacity, category_slug}, ...]
+  const hubs = {{ hubs_json|safe }}; // every already-placed hub (NVR, Access Control, ...) across ALL floor plans: [{id, device_name, floorplan_id, floorplan_name, capacity, slot_label_format, usage}, ...]
   let selectedId = null;
   let movingCameraId = null;
   // Set when the user clicks "Place" on an unplaced device — the next
@@ -358,31 +358,31 @@
     return type ? !!type.is_camera : true;
   }
 
-  function cameraTypeIsNvr(typeId){
+  function cameraTypeIsHub(typeId){
     const type = cameraTypeById(typeId);
-    return type ? !!type.is_nvr : false;
+    return type ? !!type.is_hub : false;
   }
 
-  function nvrById(id){
-    return nvrs.find(n => n.id === id);
+  function hubById(id){
+    return hubs.find(h => h.id === id);
   }
 
-  function populateNvrPicker(pickerEl, selectedNvrId){
+  function populateHubPicker(pickerEl, selectedHubId){
     const display = pickerEl.querySelector('.cfp-ctp-display');
     const menu = pickerEl.querySelector('.cfp-ctp-menu');
     menu.classList.remove('open');
-    pickerEl.dataset.value = selectedNvrId != null ? String(selectedNvrId) : '';
-    if(!nvrs.length){
-      display.textContent = 'No NVRs placed yet';
+    pickerEl.dataset.value = selectedHubId != null ? String(selectedHubId) : '';
+    if(!hubs.length){
+      display.textContent = 'No hubs placed yet';
       menu.innerHTML = '';
       return;
     }
-    const options = [{ id: '', label: 'None' }].concat(nvrs.map(n => ({
-      id: n.id,
-      label: `${n.device_name} (${n.usage ? n.usage.used + '/' + n.usage.capacity : '?'} used) — ${n.floorplan_name}`,
+    const options = [{ id: '', label: 'None' }].concat(hubs.map(h => ({
+      id: h.id,
+      label: `${h.device_name} (${h.usage ? h.usage.used + '/' + h.usage.capacity : '?'} used) — ${h.floorplan_name}`,
     })));
-    const selected = options.find(o => String(o.id) === String(selectedNvrId || ''));
-    display.textContent = selected ? selected.label : 'Select an NVR…';
+    const selected = options.find(o => String(o.id) === String(selectedHubId || ''));
+    display.textContent = selected ? selected.label : 'Select a hub…';
     menu.innerHTML = options.map(o =>
       `<div class="cfp-ctp-option" data-id="${o.id}">${o.label}</div>`
     ).join('');
@@ -449,10 +449,11 @@
       picker.querySelector('.cfp-ctp-menu').classList.remove('open');
       if(picker.id === 'cfp-type-picker'){
         const isCam = cameraTypeIsCamera(parseInt(option.dataset.id, 10));
+        const isHub = cameraTypeIsHub(parseInt(option.dataset.id, 10));
         const directionWrap = document.getElementById('cfp-direction-wrap');
         if(directionWrap) directionWrap.style.display = isCam ? '' : 'none';
-        const nvrWrap = document.getElementById('cfp-nvr-wrap');
-        if(nvrWrap) nvrWrap.style.display = isCam ? '' : 'none';
+        const hubWrap = document.getElementById('cfp-hub-wrap');
+        if(hubWrap) hubWrap.style.display = isHub ? 'none' : '';
       }
       return;
     }
@@ -613,24 +614,24 @@
       </div>
       `}
       ${RESTRICTED ? '' : `
-      <div class="mb-2" id="cfp-nvr-wrap" style="display:${cameraTypeIsCamera(cam.camera_type_id) ? '' : 'none'};">
-        <strong>Connected NVR</strong><br>
+      <div class="mb-2" id="cfp-hub-wrap" style="display:${cameraTypeIsHub(cam.camera_type_id) ? 'none' : ''};">
+        <strong>Connected Hub</strong><br>
         ${canEdit ? `
-          <div class="cfp-ctp" id="cfp-nvr-picker" data-value="">
-            <div class="cfp-ctp-display" tabindex="0">Select an NVR…</div>
+          <div class="cfp-ctp" id="cfp-hub-picker" data-value="">
+            <div class="cfp-ctp-display" tabindex="0">Select a hub…</div>
             <div class="cfp-ctp-menu"></div>
           </div>
-          <select id="cfp-nvr-channel" class="form-select form-select-sm mt-1" ${cam.connected_nvr_id == null ? 'disabled' : ''}>
+          <select id="cfp-hub-slot" class="form-select form-select-sm mt-1" ${cam.connected_hub_id == null ? 'disabled' : ''}>
           </select>
-        ` : (cam.connected_nvr_id != null
-              ? `${nvrById(cam.connected_nvr_id) ? nvrById(cam.connected_nvr_id).device_name : 'NVR'} — ${cam.channel_label || ''}`
+        ` : (cam.connected_hub_id != null
+              ? `${hubById(cam.connected_hub_id) ? hubById(cam.connected_hub_id).device_name : 'Hub'} — ${cam.hub_slot_label || ''}`
               : '<span class="text-muted">None</span>')}
       </div>
-      ${cam.nvr_channel_usage ? `
+      ${cam.hub_slot_usage ? `
         <div class="mb-2">
-          <strong>Channel usage</strong><br>
-          ${cam.nvr_channel_usage.used} of ${cam.nvr_channel_usage.capacity} channels used
-          <span class="text-muted">(${cam.nvr_channel_usage.available} available)</span>
+          <strong>Slot usage</strong><br>
+          ${cam.hub_slot_usage.used} of ${cam.hub_slot_usage.capacity} slots used
+          <span class="text-muted">(${cam.hub_slot_usage.available} available)</span>
         </div>
       ` : ''}
       `}
@@ -651,48 +652,53 @@
     if(canEdit){
       populateTypePicker(document.getElementById('cfp-type-picker'), cam.camera_type_id);
       populatePowerPicker(document.getElementById('cfp-power-picker'), cam.power_source_override);
-      const nvrPicker = document.getElementById('cfp-nvr-picker');
-      if(nvrPicker) populateNvrPicker(nvrPicker, cam.connected_nvr_id);
+      const hubPicker = document.getElementById('cfp-hub-picker');
+      if(hubPicker) populateHubPicker(hubPicker, cam.connected_hub_id);
 
-      const channelInput = document.getElementById('cfp-nvr-channel');
-      function populateChannelSelect(nvrIdRaw){
-        if(!channelInput) return;
-        const nvrId = nvrIdRaw ? parseInt(nvrIdRaw, 10) : null;
-        const nvr = nvrId != null ? nvrById(nvrId) : null;
-        channelInput.innerHTML = '';
-        channelInput.disabled = !nvr;
-        if(!nvr){
-          channelInput.innerHTML = '<option value="">Select an NVR first</option>';
+      const slotInput = document.getElementById('cfp-hub-slot');
+      function formatSlotLabel(hub, slotNum){
+        const format = (hub && hub.slot_label_format) ? hub.slot_label_format : '{n}';
+        return format.replace('{n}', slotNum);
+      }
+      function populateSlotSelect(hubIdRaw){
+        if(!slotInput) return;
+        const hubId = hubIdRaw ? parseInt(hubIdRaw, 10) : null;
+        const hub = hubId != null ? hubById(hubId) : null;
+        slotInput.innerHTML = '';
+        slotInput.disabled = !hub;
+        if(!hub){
+          slotInput.innerHTML = '<option value="">Select a hub first</option>';
           return;
         }
-        // This camera's own current channel only counts as "current" if
-        // it's on THIS nvr — switching to a different NVR means whatever
-        // channel it held before is irrelevant here, not something to
+        // This device's own current slot only counts as "current" if
+        // it's on THIS hub — switching to a different hub means whatever
+        // slot it held before is irrelevant here, not something to
         // preserve or exempt from locking.
-        const currentChannel = (nvr.id === cam.connected_nvr_id) ? cam.nvr_channel : null;
-        const usedChannels = nvr.used_channels || {}; // JSON object keys are strings
-        const capacity = nvr.capacity || 0;
-        let options = '<option value="">Select a channel…</option>';
-        for(let ch = 1; ch <= capacity; ch++){
-          const usedBy = usedChannels[String(ch)];
-          const isCurrent = ch === currentChannel;
+        const currentSlot = (hub.id === cam.connected_hub_id) ? cam.hub_slot : null;
+        const usedSlots = hub.used_slots || {}; // JSON object keys are strings
+        const capacity = hub.capacity || 0;
+        let options = '<option value="">Select a slot…</option>';
+        for(let slot = 1; slot <= capacity; slot++){
+          const usedBy = usedSlots[String(slot)];
+          const isCurrent = slot === currentSlot;
+          const label = formatSlotLabel(hub, slot);
           if(usedBy && !isCurrent){
-            options += `<option value="${ch}" disabled>D${ch} — used by ${usedBy}</option>`;
+            options += `<option value="${slot}" disabled>${label} — used by ${usedBy}</option>`;
           } else {
-            options += `<option value="${ch}" ${isCurrent ? 'selected' : ''}>D${ch}</option>`;
+            options += `<option value="${slot}" ${isCurrent ? 'selected' : ''}>${label}</option>`;
           }
         }
-        channelInput.innerHTML = options;
+        slotInput.innerHTML = options;
       }
-      populateChannelSelect(cam.connected_nvr_id);
-      if(nvrPicker){
+      populateSlotSelect(cam.connected_hub_id);
+      if(hubPicker){
         // The generic .cfp-ctp-option delegated listener (defined once,
-        // above) already updates nvrPicker.dataset.value on click — this
-        // just reacts to that same click to rebuild the channel options
-        // for whichever NVR was just picked, without duplicating the
+        // above) already updates hubPicker.dataset.value on click — this
+        // just reacts to that same click to rebuild the slot options
+        // for whichever hub was just picked, without duplicating the
         // picker logic itself.
-        nvrPicker.addEventListener('click', () => {
-          setTimeout(() => populateChannelSelect(nvrPicker.dataset.value), 0);
+        hubPicker.addEventListener('click', () => {
+          setTimeout(() => populateSlotSelect(hubPicker.dataset.value), 0);
         });
       }
 
@@ -705,16 +711,16 @@
         };
         const typeVal = getTypePickerValue(document.getElementById('cfp-type-picker'));
         pending.camera_type_id = typeVal ? parseInt(typeVal, 10) : null;
-        if(nvrPicker){
-          const nvrVal = getTypePickerValue(nvrPicker);
-          pending.connected_nvr_id = nvrVal ? parseInt(nvrVal, 10) : null;
-          pending.nvr_channel = (channelInput && channelInput.value !== '' && !channelInput.disabled)
-            ? parseInt(channelInput.value, 10) : null;
+        if(hubPicker){
+          const hubVal = getTypePickerValue(hubPicker);
+          pending.connected_hub_id = hubVal ? parseInt(hubVal, 10) : null;
+          pending.hub_slot = (slotInput && slotInput.value !== '' && !slotInput.disabled)
+            ? parseInt(slotInput.value, 10) : null;
         }
         // Deliberately NOT applied to `cam` here — savePlacement() only
         // commits these onto the real cam object once the server confirms
         // success. Assigning them here first (the previous behavior) meant
-        // a rejected save (e.g. someone else already took that channel)
+        // a rejected save (e.g. someone else already took that slot)
         // left the screen showing your choice as if it had worked, with
         // nothing to reveal the mismatch short of a manual page refresh.
         savePlacement(cam, pending);
@@ -733,7 +739,7 @@
           }).then(r => r.json()).then(data => {
             if(data.error){ showError(data.error); return; }
             cameras = cameras.filter(c => c.id !== cam.id);
-            // Keep every other field (NVR link, channel, notes, camera
+            // Keep every other field (hub link, slot, notes, camera
             // type) as it was — only position is gone — so it's a real
             // "move it later" state, not a fresh blank entry.
             cam.x_pct = null;
@@ -748,42 +754,42 @@
     }
   }
 
-  function updateNvrChannelTracking(oldNvrId, oldChannel, newNvrId, newChannel, deviceName){
-    // Keeps the in-memory `nvrs` list (which drives every open/future
-    // channel-picker's "locked, used by X" display) accurate immediately
-    // after a successful save — without this, a second camera assigned
+  function updateHubSlotTracking(oldHubId, oldSlot, newHubId, newSlot, deviceName){
+    // Keeps the in-memory `hubs` list (which drives every open/future
+    // slot-picker's "locked, used by X" display) accurate immediately
+    // after a successful save — without this, a second device assigned
     // in the same browser session, before anyone reloads the page,
-    // wouldn't see the channel just claimed by the first as taken,
-    // risking two cameras landing on the same channel.
-    if(oldNvrId != null && oldNvrId !== newNvrId){
-      const oldNvr = nvrById(oldNvrId);
-      if(oldNvr){
-        if(oldNvr.used_channels) delete oldNvr.used_channels[String(oldChannel)];
-        if(oldNvr.usage){ oldNvr.usage.used = Math.max(0, oldNvr.usage.used - 1); oldNvr.usage.available += 1; }
+    // wouldn't see the slot just claimed by the first as taken,
+    // risking two devices landing on the same slot.
+    if(oldHubId != null && oldHubId !== newHubId){
+      const oldHub = hubById(oldHubId);
+      if(oldHub){
+        if(oldHub.used_slots) delete oldHub.used_slots[String(oldSlot)];
+        if(oldHub.usage){ oldHub.usage.used = Math.max(0, oldHub.usage.used - 1); oldHub.usage.available += 1; }
       }
     }
-    if(newNvrId != null){
-      const newNvr = nvrById(newNvrId);
-      if(newNvr){
-        newNvr.used_channels = newNvr.used_channels || {};
-        const wasAlreadyOnThisNvr = (oldNvrId === newNvrId);
-        if(wasAlreadyOnThisNvr && oldChannel != null && oldChannel !== newChannel){
-          delete newNvr.used_channels[String(oldChannel)];
+    if(newHubId != null){
+      const newHub = hubById(newHubId);
+      if(newHub){
+        newHub.used_slots = newHub.used_slots || {};
+        const wasAlreadyOnThisHub = (oldHubId === newHubId);
+        if(wasAlreadyOnThisHub && oldSlot != null && oldSlot !== newSlot){
+          delete newHub.used_slots[String(oldSlot)];
         }
-        if(newChannel != null){
-          newNvr.used_channels[String(newChannel)] = deviceName;
+        if(newSlot != null){
+          newHub.used_slots[String(newSlot)] = deviceName;
         }
-        if(!wasAlreadyOnThisNvr && newNvr.usage){
-          newNvr.usage.used += 1;
-          newNvr.usage.available = Math.max(0, newNvr.usage.available - 1);
+        if(!wasAlreadyOnThisHub && newHub.usage){
+          newHub.usage.used += 1;
+          newHub.usage.available = Math.max(0, newHub.usage.available - 1);
         }
       }
     }
   }
 
   function savePlacement(cam, pending){
-    const oldConnectedNvrId = cam.connected_nvr_id;
-    const oldNvrChannel = cam.nvr_channel;
+    const oldConnectedHubId = cam.connected_hub_id;
+    const oldHubSlot = cam.hub_slot;
     fetch(`/plugins/camera-floorplan/floorplans/${floorplanId}/save-camera/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
@@ -792,7 +798,7 @@
         x_pct: cam.x_pct, y_pct: cam.y_pct,
         direction_degrees: pending.direction_degrees, notes: pending.notes,
         power_source_override: pending.power_source_override,
-        connected_nvr_id: pending.connected_nvr_id, nvr_channel: pending.nvr_channel,
+        connected_hub_id: pending.connected_hub_id, hub_slot: pending.hub_slot,
       }),
     }).then(r => r.json()).then(data => {
       if(data.error){
@@ -809,7 +815,7 @@
       // Only now — confirmed success — do the pending edits become the
       // real, trusted state of this camera.
       Object.assign(cam, pending);
-      updateNvrChannelTracking(oldConnectedNvrId, oldNvrChannel, cam.connected_nvr_id, cam.nvr_channel, cam.device_name);
+      updateHubSlotTracking(oldConnectedHubId, oldHubSlot, cam.connected_hub_id, cam.hub_slot, cam.device_name);
       renderMarkers();
       renderDetail();
     }).catch(() => {

@@ -12,25 +12,36 @@ document.addEventListener('DOMContentLoaded', function() {
   // moderately-zoomed-out default), Fisheye commonly 180° hemispherical.
   // Always editable afterward.
   var FOV_BY_PRESET = { dome: 90, bullet: 80, ptz: 60, fisheye: 180, generic: 90 };
-  // Picking a preset also suggests the matching category, since a Dome
-  // icon obviously means "Camera" and an AP icon obviously means
-  // "Access Point" — one less thing to remember to set separately.
-  var CATEGORY_BY_PRESET = {
-    dome: 'camera', bullet: 'camera', ptz: 'camera', fisheye: 'camera',
-    ap: 'ap', access_control: 'access_control', switch: 'switch', ups: 'ups',
-    server: 'server', router: 'router', firewall: 'firewall',
-    nvr: 'nvr', ont: 'ont', modem: 'modem',
-    generic: 'camera',
-  };
+  // Maps each built-in preset icon to the EquipmentCategory *slug* it
+  // should suggest when picked (e.g. picking the AP icon suggests the
+  // "Access Point" category) — mirrors CameraType.PRESET_SUGGESTED_CATEGORY_SLUG
+  // in models.py. Kept as slugs (not raw category objects) since the
+  // actual category select's values are database IDs, which this page
+  // resolves via EQUIPMENT_CATEGORIES below.
+  var CATEGORY_SLUG_BY_PRESET = {{ preset_category_slugs_json|safe }};
+  // [{id, slug, is_camera, is_hub}, ...] for every EquipmentCategory —
+  // lets this page look up a category's flags by its select value (an
+  // ID), since the <select> itself only carries IDs, not semantics.
+  var EQUIPMENT_CATEGORIES = {{ equipment_categories_json|safe }};
+
   var presetSelect = document.getElementById('id_preset_icon');
   var fovInput = document.getElementById('id_fov_degrees');
   var channelInput = document.getElementById('id_channel_capacity');
   var categorySelect = document.getElementById('id_category');
 
+  function categoryById(id){
+    return EQUIPMENT_CATEGORIES.find(function(c){ return String(c.id) === String(id); });
+  }
+
+  function categoryIdBySlug(slug){
+    var match = EQUIPMENT_CATEGORIES.find(function(c){ return c.slug === slug; });
+    return match ? match.id : undefined;
+  }
+
   // Hides/shows a field (by its #id_<name> input) plus its <label> and any
   // help-text/form-text sibling, based on a predicate over the current
   // category. Generalized so both FOV (camera-only) and channel capacity
-  // (NVR-only) share one implementation instead of two near-duplicates.
+  // (hub-only) share one implementation instead of two near-duplicates.
   function toggleFieldVisibility(inputEl, shouldShow){
     if(!inputEl) return;
     var display = shouldShow ? '' : 'none';
@@ -51,8 +62,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
   function applyVisibility(){
     if(!categorySelect) return;
-    toggleFieldVisibility(fovInput, categorySelect.value === 'camera');
-    toggleFieldVisibility(channelInput, categorySelect.value === 'nvr');
+    var current = categoryById(categorySelect.value);
+    toggleFieldVisibility(fovInput, !!(current && current.is_camera));
+    toggleFieldVisibility(channelInput, !!(current && current.is_hub));
   }
 
   if(presetSelect){
@@ -61,9 +73,10 @@ document.addEventListener('DOMContentLoaded', function() {
       if(suggestedFov !== undefined && fovInput){
         fovInput.value = suggestedFov;
       }
-      var suggestedCategory = CATEGORY_BY_PRESET[presetSelect.value];
-      if(suggestedCategory !== undefined && categorySelect){
-        categorySelect.value = suggestedCategory;
+      var suggestedSlug = CATEGORY_SLUG_BY_PRESET[presetSelect.value];
+      var suggestedId = suggestedSlug !== undefined ? categoryIdBySlug(suggestedSlug) : undefined;
+      if(suggestedId !== undefined && categorySelect){
+        categorySelect.value = suggestedId;
         applyVisibility();
       }
     });
