@@ -4,7 +4,7 @@ from django import forms
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from PIL import Image
 
-from dcim.models import Device, Location, Site, SiteGroup
+from dcim.models import Device, DeviceType, Location, Site, SiteGroup
 from netbox.forms import NetBoxModelFilterSetForm, NetBoxModelForm, NetBoxModelImportForm
 from utilities.forms.fields import CSVModelChoiceField, DynamicModelChoiceField, DynamicModelMultipleChoiceField, SlugField
 
@@ -21,14 +21,20 @@ class EquipmentCategoryForm(NetBoxModelForm):
 
 class CameraTypeForm(NetBoxModelForm):
     slug = SlugField()
-    category = DynamicModelChoiceField(
+    category = forms.ModelChoiceField(
         queryset=EquipmentCategory.objects.all(),
         help_text="Manage available categories under Plugins → Equipment Categories.",
+    )
+    device_type = DynamicModelChoiceField(
+        queryset=DeviceType.objects.all(),
+        required=False,
+        label="NetBox Device Type",
+        help_text="Optional: link to the real hardware type this represents, for auto-suggesting this entry when placing a matching device.",
     )
 
     class Meta:
         model = CameraType
-        fields = ["name", "slug", "category", "preset_icon", "icon_image", "color", "fov_degrees", "channel_capacity", "description", "tags"]
+        fields = ["name", "slug", "category", "device_type", "preset_icon", "icon_image", "color", "fov_degrees", "channel_capacity", "description", "tags"]
         widgets = {
             "color": forms.TextInput(attrs={"type": "color", "class": "form-control form-control-color"}),
         }

@@ -5,7 +5,7 @@ from django.dispatch import receiver
 from django.templatetags.static import static
 from django.urls import reverse
 
-from dcim.models import Device, Location, Site
+from dcim.models import Device, DeviceType, Location, Site
 from netbox.models import NetBoxModel
 
 
@@ -317,6 +317,24 @@ class CameraType(NetBoxModel):
             "a 4-door Access Control panel accepts up to 4 reader/button "
             "devices). Enter the exact number for your actual hardware — "
             "no preset list to run out of."
+        ),
+    )
+    device_type = models.ForeignKey(
+        to="dcim.DeviceType",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="NetBox Device Type",
+        help_text=(
+            "Optional: link this to the real NetBox hardware type (manufacturer/model) "
+            "this entry represents. One-time setup per Device Type — once set, any "
+            "NetBox device using that hardware type automatically suggests this entry "
+            "when placing it (icon, category, capacity all apply without re-picking "
+            "them by hand). Leave blank if this entry doesn't correspond to one "
+            "specific real hardware model, or if several plugin types share the same "
+            "generic placeholder hardware type — matching stays ambiguous either way, "
+            "so nothing auto-selects until it's set."
         ),
     )
 

@@ -16,7 +16,7 @@ from netbox.object_actions import BulkDelete, BulkExport, BulkImport
 
 from . import filtersets, forms, tables
 from .models import CameraPlacement, CameraType, EquipmentCategory, FloorPlan
-from dcim.models import Device
+from dcim.models import Device, Site
 
 
 class EquipmentCategoryListView(generic.ObjectListView):
@@ -396,7 +396,7 @@ def _build_canvas_context(request, floorplan, camera_only=False, force_read_only
         else:
             unplaced_data.append(entry)
 
-    camera_type_qs = CameraType.objects.select_related("category").all()
+    camera_type_qs = CameraType.objects.select_related("category", "device_type").all()
     if camera_only:
         # The CCTV view only ever shows camera-category placements, so
         # the Device Type list backing it doesn't need hub/switch/etc.
@@ -414,6 +414,7 @@ def _build_canvas_context(request, floorplan, camera_only=False, force_read_only
             "is_camera": ct.is_camera,
             "is_hub": ct.is_hub,
             "channel_capacity": ct.channel_capacity,
+            "device_type_id": ct.device_type_id,
         }
         for ct in camera_type_qs
     ]
@@ -454,6 +455,39 @@ def _build_canvas_context(request, floorplan, camera_only=False, force_read_only
     else:
         can_edit = request.user.has_perm("netbox_camera_floorplan.add_cameraplacement")
 
+    # Suppressed when restricted for the same reason hubs_json is — the
+    # "Place a device" modal (which is the only thing that reads this)
+    # never renders in restricted/read-only mode anyway, but there's no
+    # reason to leave every site name sitting in the page's raw JSON when
+    # this view is deliberately locked down.
+    sites_json = "[]" if restricted else json.dumps(
+        [{"id": s.pk, "name": s.name} for s in Site.objects.order_by("name")]
+    )
+
+    # Every NetBox device with NO CameraPlacement anywhere yet — the
+    # "Available devices" sidebar list, letting someone place an
+    # already-inventoried device without typing a search query first.
+    # Loaded across ALL sites (not just this floor plan's), same
+    # reasoning as the site filter in the "Place a device" modal: a
+    # camera might need to connect to a hub sitting at a different
+    # site/room entirely, so the option to look elsewhere has to exist
+    # — the frontend's Site/Location dropdowns default to narrowing
+    # this down to the current floor plan's own site for the common case.
+    if can_edit and not restricted:
+        available_devices = [
+            {
+                "id": d.pk, "name": d.name,
+                "site": str(d.site) if d.site else "",
+                "location": str(d.location) if d.location else "",
+                "device_type_id": d.device_type_id,
+            }
+            for d in Device.objects.exclude(pk__in=CameraPlacement.objects.values_list("device_id", flat=True))
+            .select_related("site", "location")
+            .order_by("name")
+        ]
+    else:
+        available_devices = []
+
     return {
         "object": floorplan,
         "floorplan": floorplan,
@@ -461,6 +495,8 @@ def _build_canvas_context(request, floorplan, camera_only=False, force_read_only
         "unplaced_json": json.dumps(unplaced_data),
         "camera_types_json": json.dumps(camera_types),
         "hubs_json": json.dumps(hub_data),
+        "sites_json": sites_json,
+        "available_devices_json": json.dumps(available_devices),
         "can_edit": can_edit,
         "restricted": restricted,
     }
@@ -661,6 +697,9 @@ class DeviceSearchView(PermissionRequiredMixin, View):
 
     Optionally scoped to a FloorPlan's site/location via ?floorplan_id=,
     so devices belonging to that site/location are shown first.
+    Optionally FILTERED (not just sorted) to one site via ?site_id=, for
+    when a device list spans enough sites that even the sorted default
+    is too long to scan through comfortably.
     """
 
     permission_required = "netbox_camera_floorplan.add_cameraplacement"
@@ -672,6 +711,10 @@ class DeviceSearchView(PermissionRequiredMixin, View):
         # search box shows a full/default list sorted by relevance to
         # this floor plan, before the user types anything to narrow it.
         devices = Device.objects.filter(name__icontains=query).select_related("site", "location")
+
+        site_id = request.GET.get("site_id")
+        if site_id:
+            devices = devices.filter(site_id=site_id)
 
         floorplan_id = request.GET.get("floorplan_id")
         if floorplan_id:
@@ -710,6 +753,7 @@ class DeviceSearchView(PermissionRequiredMixin, View):
                     "name": d.name,
                     "site": str(d.site) if d.site else "",
                     "location": str(d.location) if d.location else "",
+                    "device_type_id": d.device_type_id,
                     "placed_on_floorplan": (
                         existing_placements[d.pk].name if d.pk in existing_placements else None
                     ),

@@ -19,15 +19,19 @@ class EquipmentCategoryTable(NetBoxTable):
 class CameraTypeTable(NetBoxTable):
     name = tables.Column(linkify=True)
     category = tables.Column()
+    device_type = tables.Column(linkify=True, verbose_name="NetBox Device Type")
     icon_preview = tables.Column(empty_values=(), orderable=False, verbose_name="Icon")
     swatch = tables.Column(empty_values=(), orderable=False, verbose_name="Color", accessor="color")
 
     class Meta(NetBoxTable.Meta):
         model = CameraType
-        fields = ("pk", "id", "name", "category", "icon_preview", "swatch", "fov_degrees", "channel_capacity", "description", "tags")
-        default_columns = ("name", "category", "icon_preview", "swatch", "fov_degrees", "channel_capacity", "description")
+        fields = ("pk", "id", "name", "category", "device_type", "icon_preview", "swatch", "fov_degrees", "channel_capacity", "description", "tags")
+        default_columns = ("name", "category", "device_type", "icon_preview", "swatch", "fov_degrees", "channel_capacity", "description")
 
     def render_category(self, value, record):
+        return str(value) if value else "—"
+
+    def render_device_type(self, value, record):
         return str(value) if value else "—"
 
     def render_fov_degrees(self, value, record):

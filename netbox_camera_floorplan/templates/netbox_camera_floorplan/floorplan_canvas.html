@@ -72,6 +72,22 @@
       <div class="card-header">Unplaced devices</div>
       <div class="card-body p-2" id="cfp-unplaced-list"></div>
     </div>
+    <div class="card mb-3" id="cfp-available-card" style="display:none;">
+      <div class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer;" id="cfp-available-toggle">
+        <span>Available devices</span>
+        <span id="cfp-available-caret">▾</span>
+      </div>
+      <div class="card-body p-2" id="cfp-available-body">
+        <select id="cfp-available-site-filter" class="form-select form-select-sm mb-1">
+          <option value="">All sites</option>
+        </select>
+        <select id="cfp-available-location-filter" class="form-select form-select-sm mb-1">
+          <option value="">All locations</option>
+        </select>
+        <input type="text" id="cfp-available-search" class="form-control form-control-sm mb-2" placeholder="Search by name…" autocomplete="off">
+        <div id="cfp-available-list"></div>
+      </div>
+    </div>
     <div class="card">
       <div class="card-header">Device details</div>
       <div class="card-body" id="cfp-detail">
@@ -98,6 +114,12 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Filter by site <span class="text-muted">(optional)</span></label>
+          <select id="cfp-device-site-filter" class="form-select">
+            <option value="">All sites</option>
+          </select>
+        </div>
         <div class="mb-3">
           <label class="form-label">Device</label>
           <input type="text" id="cfp-device-search" class="form-control" placeholder="Search devices by name…" autocomplete="off">
@@ -226,17 +248,22 @@
 <script>
 (function(){
   const floorplanId = {{ floorplan.pk }};
+  const floorplanSiteId = {{ floorplan.site_id|default:"null" }};
+  const floorplanSiteName = "{{ floorplan.site|escapejs }}";
   const canEdit = {{ can_edit|yesno:"true,false" }};
   let cameras = {{ cameras_json|safe }};
   let unplaced = {{ unplaced_json|safe }}; // devices imported via CSV — no x/y yet, awaiting a manual canvas click
   const cameraTypes = {{ camera_types_json|safe }}; // [{id, name, color, icon_url, is_camera, is_hub, channel_capacity, category_slug}, ...]
   const hubs = {{ hubs_json|safe }}; // every already-placed hub (NVR, Access Control, ...) across ALL floor plans: [{id, device_name, floorplan_id, floorplan_name, capacity, slot_label_format, usage}, ...]
+  const sites = {{ sites_json|safe }}; // [{id, name}, ...] — powers the optional site filter in the Place a device modal
+  let availableDevices = {{ available_devices_json|safe }}; // NetBox devices at this site with NO CameraPlacement anywhere yet: [{id, name, location}, ...]
   let selectedId = null;
   let movingCameraId = null;
   // Set when the user clicks "Place" on an unplaced device — the next
   // canvas click assigns that device's x/y via the existing save-camera
   // endpoint (an update, not a create), rather than opening the add-modal.
   let placingId = null;
+  let placingAvailableId = null; // a raw Device.id from the Available Devices list, awaiting a canvas click to open the Place-a-device modal pre-filled
   const RESTRICTED = {{ restricted|yesno:"true,false" }};
   const LABEL_MODE_KEY = 'netbox_camera_floorplan_label_mode';
   // A persisted preference of "both" or "ip" from a previous (non-CCTV)
@@ -324,6 +351,18 @@
 
   function cameraTypeById(id){
     return cameraTypes.find(t => t.id === id);
+  }
+
+  function cameraTypeByDeviceTypeId(deviceTypeId){
+    // Returns the matching plugin Device Type if — and only if — the
+    // mapping is unambiguous (exactly one plugin type links to this real
+    // hardware type). Several plugin types sharing one generic hardware
+    // type (ambiguous) or none at all (unmapped) both return undefined,
+    // which callers treat as "nothing to auto-select" rather than
+    // guessing wrong.
+    if(deviceTypeId == null) return undefined;
+    const matches = cameraTypes.filter(t => t.device_type_id === deviceTypeId);
+    return matches.length === 1 ? matches[0] : undefined;
   }
 
   function cameraIconHtml(typeId){
@@ -560,9 +599,117 @@
         btn.addEventListener('click', () => {
           placingId = (placingId === parseInt(btn.dataset.id, 10)) ? null : parseInt(btn.dataset.id, 10);
           movingCameraId = null; // the two "click canvas to position something" modes are mutually exclusive
+          placingAvailableId = null; // only one "waiting for a canvas click" mode active at a time
           renderUnplaced();
+          renderAvailable();
         });
       });
+    }
+  }
+
+  let availableFiltersBuilt = false;
+  let availableVisibleCount = 10;
+  let availableCollapsed = false;
+
+  function renderAvailable(){
+    const card = document.getElementById('cfp-available-card');
+    const list = document.getElementById('cfp-available-list');
+    const siteFilterEl = document.getElementById('cfp-available-site-filter');
+    const locationFilterEl = document.getElementById('cfp-available-location-filter');
+    const searchBox = document.getElementById('cfp-available-search');
+    const toggleHeader = document.getElementById('cfp-available-toggle');
+    const body = document.getElementById('cfp-available-body');
+    const caret = document.getElementById('cfp-available-caret');
+
+    if(!canEdit || !availableDevices.length){
+      card.style.display = 'none';
+      return;
+    }
+    card.style.display = '';
+
+    if(!availableFiltersBuilt){
+      const sitesPresent = [...new Set(availableDevices.map(d => d.site).filter(Boolean))].sort();
+      siteFilterEl.innerHTML = '<option value="">All sites</option>' +
+        sitesPresent.map(s => `<option value="${s}">${s}</option>`).join('');
+      // Default to this floor plan's own site — the overwhelmingly
+      // common case — while "All sites" stays one click away.
+      if(floorplanSiteName && sitesPresent.includes(floorplanSiteName)){
+        siteFilterEl.value = floorplanSiteName;
+      }
+      siteFilterEl.addEventListener('change', () => { rebuildAvailableLocationOptions(); availableVisibleCount = 10; renderAvailable(); });
+      locationFilterEl.addEventListener('change', () => { availableVisibleCount = 10; renderAvailable(); });
+      searchBox.addEventListener('input', () => { availableVisibleCount = 10; renderAvailable(); });
+      toggleHeader.addEventListener('click', () => {
+        availableCollapsed = !availableCollapsed;
+        body.style.display = availableCollapsed ? 'none' : '';
+        caret.textContent = availableCollapsed ? '▸' : '▾';
+      });
+      availableFiltersBuilt = true;
+      rebuildAvailableLocationOptions();
+    }
+
+    const siteValue = siteFilterEl.value;
+    const locationValue = locationFilterEl.value;
+    const searchValue = searchBox.value.trim().toLowerCase();
+    const filtered = availableDevices.filter(dev => {
+      if(siteValue && dev.site !== siteValue) return false;
+      if(locationValue && dev.location !== locationValue) return false;
+      if(searchValue && !dev.name.toLowerCase().includes(searchValue)) return false;
+      return true;
+    });
+
+    const visible = filtered.slice(0, availableVisibleCount);
+    const remaining = filtered.length - visible.length;
+
+    list.innerHTML = (visible.map(dev => {
+      const matched = cameraTypeByDeviceTypeId(dev.device_type_id);
+      const icon = matched ? cameraIconHtml(matched.id) + ' ' : '';
+      return `
+      <div class="d-flex align-items-center justify-content-between mb-1 small">
+        <span>${icon}${dev.name}${dev.location ? ' <span class="text-muted">(' + dev.location + ')</span>' : ''}</span>
+        <button type="button" class="btn btn-xs btn-outline-primary py-0 px-1 cfp-place-available-btn" data-id="${dev.id}">
+          ${placingAvailableId === dev.id ? 'Click canvas…' : 'Place'}
+        </button>
+      </div>
+    `;
+    }).join('') || '<div class="text-muted small p-1">No matching devices.</div>')
+    + (remaining > 0 ? `<button type="button" class="btn btn-xs btn-outline-secondary w-100 mt-1" id="cfp-available-show-more">Show ${Math.min(remaining, 20)} more (${remaining} left)</button>` : '');
+
+    list.querySelectorAll('.cfp-place-available-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        placingAvailableId = (placingAvailableId === parseInt(btn.dataset.id, 10)) ? null : parseInt(btn.dataset.id, 10);
+        movingCameraId = null; // the "click canvas to position something" modes are mutually exclusive
+        placingId = null;
+        renderAvailable();
+      });
+    });
+    const showMoreBtn = document.getElementById('cfp-available-show-more');
+    if(showMoreBtn){
+      showMoreBtn.addEventListener('click', () => {
+        availableVisibleCount += 20;
+        renderAvailable();
+      });
+    }
+  }
+
+  function rebuildAvailableLocationOptions(){
+    // Location options are scoped to whichever site is currently
+    // selected (or all sites, if that's the current selection) — a
+    // "Battery Room" that only exists at a different site than the one
+    // picked would otherwise appear as a confusing, always-empty option.
+    const siteFilterEl = document.getElementById('cfp-available-site-filter');
+    const locationFilterEl = document.getElementById('cfp-available-location-filter');
+    const siteValue = siteFilterEl.value;
+    const previousSelection = locationFilterEl.value;
+    const pool = siteValue ? availableDevices.filter(d => d.site === siteValue) : availableDevices;
+    const locations = [...new Set(pool.map(d => d.location).filter(Boolean))].sort();
+    locationFilterEl.innerHTML = '<option value="">All locations</option>' +
+      locations.map(loc => `<option value="${loc}">${loc}</option>`).join('');
+    // Keep the previous location selection if it's still valid for the
+    // newly selected site; otherwise fall back to "All locations"
+    // rather than silently keeping an invalid, now-hidden selection.
+    if(locations.includes(previousSelection)){
+      locationFilterEl.value = previousSelection;
     }
   }
 
@@ -632,6 +779,25 @@
           <strong>Slot usage</strong><br>
           ${cam.hub_slot_usage.used} of ${cam.hub_slot_usage.capacity} slots used
           <span class="text-muted">(${cam.hub_slot_usage.available} available)</span>
+          ${(() => {
+            // This device IS a hub, so it also appears in the `hubs`
+            // array (built server-side from the same is_hub filter) —
+            // reused here rather than duplicating get_hub_slot_assignments'
+            // per-slot breakdown into a second, separate JSON field.
+            const hubEntry = hubs.find(h => h.id === cam.id);
+            if(!hubEntry) return '';
+            const format = hubEntry.slot_label_format || '{n}';
+            const rows = [];
+            for(let slot = 1; slot <= hubEntry.capacity; slot++){
+              const occupant = (hubEntry.used_slots || {})[String(slot)];
+              const label = format.replace('{n}', slot);
+              rows.push(`<div class="d-flex justify-content-between small">
+                <span>${label}</span>
+                <span class="${occupant ? '' : 'text-muted'}">${occupant || 'Empty'}</span>
+              </div>`);
+            }
+            return `<details class="mt-1"><summary class="small" style="cursor:pointer;">Show per-slot breakdown</summary>${rows.join('')}</details>`;
+          })()}
         </div>
       ` : ''}
       `}
@@ -727,8 +893,12 @@
       });
       document.getElementById('cfp-move-btn').addEventListener('click', () => {
         movingCameraId = (movingCameraId === cam.id) ? null : cam.id;
+        placingId = null; // the "click canvas to position something" modes are mutually exclusive
+        placingAvailableId = null;
         renderMarkers();
         renderDetail();
+        renderUnplaced();
+        renderAvailable();
       });
       document.getElementById('cfp-delete-btn').addEventListener('click', () => {
         getBsModal(document.getElementById('cfp-delete-modal')).show();
@@ -830,9 +1000,23 @@
   const resultsBox = document.getElementById('cfp-device-results');
   const selectedLabel = document.getElementById('cfp-device-selected');
   const confirmAddBtn = document.getElementById('cfp-confirm-add');
+  const siteFilter = document.getElementById('cfp-device-site-filter');
+
+  if(siteFilter && sites.length){
+    siteFilter.innerHTML = '<option value="">All sites</option>' +
+      sites.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+    // Default to this floor plan's own site — the overwhelmingly common
+    // case — while "All sites" stays one click away for the occasional
+    // cross-site device (e.g. a shared NVR, or moving a spare camera in).
+    if(floorplanSiteId != null){
+      siteFilter.value = String(floorplanSiteId);
+    }
+    siteFilter.addEventListener('change', () => searchDevices(searchInput.value));
+  }
 
   function searchDevices(query){
-    fetch(`/plugins/camera-floorplan/device-search/?q=${encodeURIComponent(query)}&floorplan_id=${floorplanId}`)
+    const siteParam = (siteFilter && siteFilter.value) ? `&site_id=${siteFilter.value}` : '';
+    fetch(`/plugins/camera-floorplan/device-search/?q=${encodeURIComponent(query)}&floorplan_id=${floorplanId}${siteParam}`)
       .then(r => r.json())
       .then(data => {
         resultsBox.innerHTML = data.results.map(d => {
@@ -843,7 +1027,7 @@
               <br><small>Already placed on "${d.placed_on_floorplan}"</small>
             </div>`;
           }
-          return `<div class="list-group-item" data-id="${d.id}" data-name="${d.name}" data-meta="${meta}">${d.name}${meta ? ' <span class="text-muted">(' + meta + ')</span>' : ''}</div>`;
+          return `<div class="list-group-item" data-id="${d.id}" data-name="${d.name}" data-meta="${meta}" data-device-type-id="${d.device_type_id != null ? d.device_type_id : ''}">${d.name}${meta ? ' <span class="text-muted">(' + meta + ')</span>' : ''}</div>`;
         }).join('') || '<div class="text-muted small p-1">No matching devices.</div>';
         resultsBox.querySelectorAll('.list-group-item[data-id]:not(.text-danger)').forEach(item => {
           item.addEventListener('click', () => {
@@ -853,6 +1037,13 @@
             resultsBox.innerHTML = '';
             searchInput.value = item.dataset.name;
             confirmAddBtn.disabled = false;
+            // Auto-suggest the matching plugin Device Type when this
+            // device's real hardware type unambiguously maps to one —
+            // still just a pre-fill, never forced: the picker stays a
+            // normal dropdown the user can change before confirming.
+            const rawDeviceTypeId = item.dataset.deviceTypeId;
+            const matched = rawDeviceTypeId ? cameraTypeByDeviceTypeId(parseInt(rawDeviceTypeId, 10)) : undefined;
+            populateTypePicker(document.getElementById('cfp-new-type-picker'), matched ? matched.id : null);
           });
         });
       })
@@ -938,6 +1129,27 @@
           renderUnplaced();
           renderMarkers();
         }).catch(() => showError('Could not place this device. Please try again.'));
+        return;
+      }
+
+      if(placingAvailableId != null){
+        // Reuses the same "Place a device" modal + confirmAddBtn creation
+        // path as clicking a blank spot on the canvas directly (below) —
+        // the only difference is the device is already picked, so the
+        // search step is skipped entirely. Still requires choosing a
+        // Device Type in the modal before confirming, same as usual.
+        const dev = availableDevices.find(d => d.id === placingAvailableId);
+        pendingClick = { x_pct: xPct, y_pct: yPct };
+        selectedNewDeviceId = placingAvailableId;
+        searchInput.value = dev ? dev.name : '';
+        resultsBox.innerHTML = '';
+        selectedLabel.textContent = dev ? `Selected: ${dev.name}${dev.location ? ' (' + dev.location + ')' : ''}` : '';
+        confirmAddBtn.disabled = false;
+        const matched = dev ? cameraTypeByDeviceTypeId(dev.device_type_id) : undefined;
+        populateTypePicker(document.getElementById('cfp-new-type-picker'), matched ? matched.id : null);
+        getBsModal(document.getElementById('cfp-add-modal')).show();
+        placingAvailableId = null;
+        renderAvailable();
         return;
       }
 
@@ -1028,6 +1240,7 @@
   renderMarkers();
   renderDetail();
   renderUnplaced();
+  renderAvailable();
 })();
 </script>
 {% endblock %}
