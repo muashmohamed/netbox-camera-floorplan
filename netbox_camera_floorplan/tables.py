@@ -1,6 +1,7 @@
 import django_tables2 as tables
 from django.urls import reverse
 from django.utils.html import format_html, format_html_join
+from django.utils.safestring import mark_safe
 
 from netbox.tables import ActionsColumn, NetBoxTable
 
@@ -172,6 +173,9 @@ class CameraPlacementTable(NetBoxTable):
     channel = tables.Column(
         empty_values=(), orderable=False, accessor="hub_slot",
     )
+    setup_status = tables.Column(
+        empty_values=(), orderable=False, verbose_name="Setup", accessor="pk",
+    )
     # No "edit" action here on purpose — a placement's position (x/y) can
     # only be set meaningfully by clicking on the floor plan canvas, not
     # from a blind form. This list is for viewing/deleting only; to move
@@ -186,6 +190,7 @@ class CameraPlacementTable(NetBoxTable):
             "device",
             "floorplan",
             "camera_type",
+            "setup_status",
             "placed",
             "reachability",
             "connected_hub",
@@ -194,7 +199,51 @@ class CameraPlacementTable(NetBoxTable):
             "power_source_override",
             "tags",
         )
-        default_columns = ("device", "floorplan", "camera_type", "placed", "reachability", "connected_hub", "channel", "power_source_override")
+        default_columns = ("device", "floorplan", "camera_type", "setup_status", "placed", "reachability", "connected_hub", "channel", "power_source_override")
+
+    def render_setup_status(self, record):
+        # mark_safe, not format_html: every branch here is a fully
+        # static or pre-escaped string with no {}-based interpolation,
+        # and format_html requires at least one positional/keyword arg
+        # even when the format string has no placeholders to fill —
+        # calling it with zero args raises TypeError("args or kwargs
+        # must be provided") regardless of whether interpolation is
+        # actually needed.
+        missing = []
+        device = record.device
+
+        # What floor plan SHOULD this placement point to, given the
+        # device's CURRENT Location right now — not whatever it was
+        # when this placement was first created. The auto-create signal
+        # only ever fires for a device with no placement yet, so if the
+        # device's Location changes afterward, nothing currently updates
+        # this placement's floorplan to match — it silently goes stale.
+        # This check is what surfaces that instead of hiding it.
+        expected_floorplan_id = None
+        if device.location_id:
+            expected = FloorPlan.objects.filter(site_id=device.site_id, location_id=device.location_id).first()
+            expected_floorplan_id = expected.pk if expected else None
+
+        if record.floorplan_id != expected_floorplan_id:
+            missing.append(
+                "this device's Location has changed since it was placed — its placement "
+                "still points at the old floor plan (or none at all); review and re-place "
+                "it if the new location is where it actually belongs"
+            )
+        elif record.floorplan_id is None:
+            missing.append("no floor plan exists yet for this device's Location")
+
+        if not record.camera_type_id:
+            missing.append("no plugin Device Type is mapped to this device's hardware type")
+
+        if not missing:
+            return mark_safe(
+                '<span class="text-success" title="Floor plan and Device Type are both set — everything needed to place this is ready">✓ Ready</span>'
+            )
+        tooltip = "; ".join(missing).replace('"', "&quot;")
+        return mark_safe(
+            f'<span class="text-warning" title="{tooltip}">⚠ Needs attention</span>'
+        )
 
     def render_reachability(self, record):
         status = record.get_reachability_status()
@@ -207,6 +256,14 @@ class CameraPlacementTable(NetBoxTable):
         return format_html('<span class="text-muted">{}</span>', "No data")
 
     def render_placed(self, record):
+        if record.floorplan_id is None:
+            # No floor plan exists yet for this device's Location at all
+            # — nothing to open or click toward yet. Distinct from the
+            # normal "Unplaced" state (floor plan exists, just no x/y
+            # set), which is why this isn't just an early return of that
+            # same badge — the Setup column already explains the "why"
+            # in more detail; this stays a quick visual flag.
+            return format_html('<span class="badge text-bg-secondary">{}</span>', "No floor plan")
         url = record.floorplan.get_absolute_url()
         if record.is_placed:
             return format_html(

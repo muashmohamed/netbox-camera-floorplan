@@ -1,6 +1,6 @@
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
-from django.db.models.signals import pre_delete
+from django.db.models.signals import post_save, pre_delete
 from django.dispatch import receiver
 from django.templatetags.static import static
 from django.urls import reverse
@@ -391,8 +391,16 @@ class CameraPlacement(NetBoxModel):
 
     floorplan = models.ForeignKey(
         to=FloorPlan,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         related_name="cameras",
+        null=True,
+        blank=True,
+        help_text=(
+            "Left blank when this placement was auto-created for a device whose "
+            "Location has no matching FloorPlan yet — create one for that Site/"
+            "Location and this will need to be set (either automatically on the "
+            "next save, or manually)."
+        ),
     )
     device = models.ForeignKey(
         to=Device,
@@ -491,10 +499,19 @@ class CameraPlacement(NetBoxModel):
         ]
 
     def __str__(self):
-        return f"{self.device.name} @ {self.floorplan.name}"
+        where = self.floorplan.name if self.floorplan else "no floor plan yet"
+        return f"{self.device.name} @ {where}"
 
     def get_absolute_url(self):
-        return reverse("plugins:netbox_camera_floorplan:floorplan", args=[self.floorplan.pk])
+        if self.floorplan_id:
+            return reverse("plugins:netbox_camera_floorplan:floorplan", args=[self.floorplan.pk])
+        # No floor plan yet (auto-created from the device's Location with
+        # no matching FloorPlan) — there's no canvas page to link to, so
+        # fall back to this placement's own row in the Device Placements
+        # list rather than crashing every place that calls this (list
+        # views, the changelog, bulk actions — all assume every object
+        # has SOME absolute URL).
+        return reverse("plugins:netbox_camera_floorplan:cameraplacement_list")
 
     @property
     def is_placed(self):
@@ -667,3 +684,55 @@ def clear_orphaned_hub_slot(sender, instance, **kwargs):
     """
     if instance.camera_type_id and instance.camera_type.is_hub:
         instance.connected_devices.update(hub_slot=None)
+
+
+def find_unambiguous_camera_type(device_type_id):
+    """
+    Returns the plugin CameraType linked to this real NetBox hardware
+    DeviceType — but ONLY when exactly one plugin type claims that
+    hardware type. Several plugin types sharing one hardware type
+    (ambiguous) or none at all (unmapped) both return None, since
+    picking an arbitrary one of several candidates would be a wrong
+    guess, not a helpful default. Shared with the JS-side equivalent
+    (cameraTypeByDeviceTypeId in floorplan_canvas.html) — same rule,
+    kept in sync deliberately rather than by coincidence.
+    """
+    if not device_type_id:
+        return None
+    matches = list(CameraType.objects.filter(device_type_id=device_type_id)[:2])
+    return matches[0] if len(matches) == 1 else None
+
+
+@receiver(post_save, sender=Device)
+def auto_create_placement_for_located_device(sender, instance, **kwargs):
+    """
+    Turns Device Placements into a location-derived list rather than a
+    purely manually-populated one: whenever a NetBox device has a
+    Location, automatically create its CameraPlacement — unplaced, same
+    as today's manual "search, select, place" flow, just without needing
+    a human to do that search first.
+
+    floorplan is left null when no FloorPlan exists yet for this exact
+    Site+Location — CameraPlacement.floorplan is nullable specifically
+    to support this case (see its own field docstring). The device still
+    shows up in the Device Placements list either way, flagged via the
+    table's Setup column rather than being silently invisible until
+    someone happens to create the matching floor plan.
+
+    Fires on every Device save, not just ones where location actually
+    changed: the existence check below is cheap, and detecting "did
+    location specifically change" via pre_save value diffing adds real
+    complexity (extra query, extra signal) for no practical benefit — a
+    device that already has a placement is always a no-op here regardless
+    of why it was saved.
+    """
+    if instance.location_id is None:
+        return
+    if CameraPlacement.objects.filter(device=instance).exists():
+        return
+    floorplan = FloorPlan.objects.filter(site_id=instance.site_id, location_id=instance.location_id).first()
+    CameraPlacement.objects.create(
+        device=instance,
+        floorplan=floorplan,
+        camera_type=find_unambiguous_camera_type(instance.device_type_id),
+    )

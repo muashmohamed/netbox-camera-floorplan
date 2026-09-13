@@ -587,7 +587,10 @@ class CameraPlacementSaveView(PermissionRequiredMixin, View):
                 if existing and existing.floorplan_id == floorplan.pk:
                     where = "this floor plan"
                 elif existing:
-                    where = f'the floor plan "{existing.floorplan.name}"'
+                    where = (
+                        f'the floor plan "{existing.floorplan.name}"' if existing.floorplan
+                        else "another location (no floor plan set for it yet — check Device Placements)"
+                    )
                 else:
                     where = "another floor plan (its marker may have just been removed — please try again)"
                 return JsonResponse(
