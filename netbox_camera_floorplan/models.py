@@ -553,6 +553,42 @@ class CameraPlacement(NetBoxModel):
         if errors:
             raise ValidationError(errors)
 
+        if self.floorplan_id and self.device_id:
+            if self.floorplan.site_id != self.device.site_id:
+                errors["floorplan"] = (
+                    f"This device belongs to {self.device.site}, but the selected floor "
+                    f"plan is for {self.floorplan.site} — a device can't be placed on a "
+                    f"floor plan for a different site."
+                )
+            elif self.floorplan.location_id and self.device.location_id:
+                # The floor plan's Location must be an ancestor of (or the
+                # same as) the device's own Location — not a strict equality
+                # check, since NetBox Locations nest (e.g. "IT Department"
+                # under "First Floor"). A device sitting in a child location
+                # legitimately belongs on a floor plan scoped to the parent;
+                # only a genuine mismatch (different branch of the tree)
+                # should be rejected.
+                #
+                # Deliberately NOT enforced when the device has no Location
+                # set at all (self.device.location_id is None) — an unset
+                # Location isn't a location that CONTRADICTS the floor
+                # plan's, there's simply nothing there to compare. Rejecting
+                # it anyway would block placing perfectly legitimate devices
+                # (a very common real-world state) for having incomplete
+                # DCIM data rather than for an actual mismatch.
+                valid_location_ids = {self.floorplan.location_id} | {
+                    loc.pk for loc in self.device.location.get_ancestors()
+                }
+                if self.device.location_id not in valid_location_ids:
+                    errors["floorplan"] = (
+                        f"This device's location ({self.device.location}) doesn't "
+                        f"fall under this floor plan's location ({self.floorplan.location}) "
+                        f"— even though they're both at {self.device.site}."
+                    )
+
+        if errors:
+            raise ValidationError(errors)
+
     def get_hub_slot_label(self):
         """
         Returns e.g. "D5" or "Door 5" for hub_slot=5, formatted per the
@@ -736,3 +772,37 @@ def auto_create_placement_for_located_device(sender, instance, **kwargs):
         floorplan=floorplan,
         camera_type=find_unambiguous_camera_type(instance.device_type_id),
     )
+
+
+@receiver(post_save, sender=FloorPlan)
+def link_waiting_placements_to_new_floorplan(sender, instance, **kwargs):
+    """
+    The other half of the location-derived design: whenever a FloorPlan
+    is created for a Site+Location, automatically link any existing
+    CameraPlacement rows that were sitting with floorplan=None purely
+    because no floor plan existed yet for their device's Location —
+    turning "run the stale-fix script by hand every time you create a
+    floor plan" into something that just happens automatically the
+    moment the floor plan is saved.
+
+    Deliberately ONLY fills in placements that currently have NO
+    floorplan at all (floorplan__isnull=True) — never reassigns a
+    placement that already points somewhere else. A placement pointing
+    at a different floor plan than its device's current Location
+    suggests something changed since it was placed (the device moved,
+    or was placed on the wrong floor plan to begin with) — that's a
+    genuine "flag it, let a human decide" situation (see the Setup
+    column's stale-detection logic), not something to silently
+    reassign out from under whoever set it.
+
+    Only applies to floor plans with a Location set — a site-wide floor
+    plan (location=None) can't be unambiguously matched to specific
+    devices by Location this way, so those are left for manual linking.
+    """
+    if instance.location_id is None:
+        return
+    CameraPlacement.objects.filter(
+        floorplan__isnull=True,
+        device__site_id=instance.site_id,
+        device__location_id=instance.location_id,
+    ).update(floorplan=instance)

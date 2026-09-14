@@ -219,12 +219,23 @@ class CameraPlacementTable(NetBoxTable):
         # device's Location changes afterward, nothing currently updates
         # this placement's floorplan to match — it silently goes stale.
         # This check is what surfaces that instead of hiding it.
-        expected_floorplan_id = None
+        #
+        # When device.location_id is None, there's nothing specific to
+        # compare against — an unset Location isn't a location that
+        # CONTRADICTS the placement's floor plan, there's simply no data
+        # to check. In that case only the Site is verified (a real,
+        # correctly hand-placed device shouldn't get flagged "stale"
+        # just because its Location field happens to be blank in DCIM —
+        # that's an incomplete-data situation, not a mismatch).
+        is_stale = False
         if device.location_id:
             expected = FloorPlan.objects.filter(site_id=device.site_id, location_id=device.location_id).first()
             expected_floorplan_id = expected.pk if expected else None
+            is_stale = record.floorplan_id != expected_floorplan_id
+        elif record.floorplan_id and record.floorplan.site_id != device.site_id:
+            is_stale = True
 
-        if record.floorplan_id != expected_floorplan_id:
+        if is_stale:
             missing.append(
                 "this device's Location has changed since it was placed — its placement "
                 "still points at the old floor plan (or none at all); review and re-place "

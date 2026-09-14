@@ -133,6 +133,7 @@
             <div class="cfp-ctp-menu"></div>
           </div>
         </div>
+        <div id="cfp-add-modal-error" class="alert alert-danger" style="display:none;"></div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -202,6 +203,9 @@
     width:var(--cfp-icon-size); height:var(--cfp-icon-size); object-fit:contain;
     background:#f4f6f8; border-radius:50%; padding:var(--cfp-icon-pad); box-sizing:content-box;
   }
+  .cfp-list-icon img {
+    width:16px; height:16px; object-fit:contain; vertical-align:middle;
+  }
   .cfp-marker .cfp-ring {
     position:absolute; border-radius:50%; border:2px solid #5a6b7d;
     width:var(--cfp-ring-size); height:var(--cfp-ring-size);
@@ -250,6 +254,7 @@
   const floorplanId = {{ floorplan.pk }};
   const floorplanSiteId = {{ floorplan.site_id|default:"null" }};
   const floorplanSiteName = "{{ floorplan.site|escapejs }}";
+  const floorplanLocationName = "{{ floorplan.location|default:''|escapejs }}";
   const canEdit = {{ can_edit|yesno:"true,false" }};
   let cameras = {{ cameras_json|safe }};
   let unplaced = {{ unplaced_json|safe }}; // devices imported via CSV — no x/y yet, awaiting a manual canvas click
@@ -588,7 +593,7 @@
     card.style.display = '';
     list.innerHTML = unplaced.map(cam => `
       <div class="d-flex align-items-center justify-content-between mb-1 small">
-        <span>${cameraIconHtml(cam.camera_type_id)} <a href="${cam.device_url}">${cam.device_name}</a></span>
+        <span><span class="cfp-list-icon">${cameraIconHtml(cam.camera_type_id)}</span> <a href="${cam.device_url}">${cam.device_name}</a></span>
         ${canEdit ? `<button type="button" class="btn btn-xs btn-outline-primary py-0 px-1 cfp-place-btn" data-id="${cam.id}">
           ${placingId === cam.id ? 'Click canvas…' : 'Place'}
         </button>` : ''}
@@ -628,12 +633,19 @@
     card.style.display = '';
 
     if(!availableFiltersBuilt){
-      const sitesPresent = [...new Set(availableDevices.map(d => d.site).filter(Boolean))].sort();
+      const sitesPresent = new Set(availableDevices.map(d => d.site).filter(Boolean));
+      // Always offer this floor plan's own site as an explicit option
+      // and default selection — even with zero available devices there
+      // right now. Omitting it (the old behavior) meant it silently
+      // vanished from the list the moment every device at that site
+      // happened to already be placed, defaulting to "All sites"
+      // instead — technically correct, but looked like a bug rather
+      // than the reassuring "nothing left to place here" it actually is.
+      if(floorplanSiteName) sitesPresent.add(floorplanSiteName);
+      const sortedSites = [...sitesPresent].sort();
       siteFilterEl.innerHTML = '<option value="">All sites</option>' +
-        sitesPresent.map(s => `<option value="${s}">${s}</option>`).join('');
-      // Default to this floor plan's own site — the overwhelmingly
-      // common case — while "All sites" stays one click away.
-      if(floorplanSiteName && sitesPresent.includes(floorplanSiteName)){
+        sortedSites.map(s => `<option value="${s}">${s}</option>`).join('');
+      if(floorplanSiteName){
         siteFilterEl.value = floorplanSiteName;
       }
       siteFilterEl.addEventListener('change', () => { rebuildAvailableLocationOptions(); availableVisibleCount = 10; renderAvailable(); });
@@ -661,9 +673,30 @@
     const visible = filtered.slice(0, availableVisibleCount);
     const remaining = filtered.length - visible.length;
 
+    let emptyMessage = 'No matching devices.';
+    if(!searchValue){
+      if(siteValue && locationValue){
+        emptyMessage = `All devices at ${siteValue} / ${locationValue} already have a placement.`;
+      } else if(siteValue){
+        emptyMessage = `All devices at ${siteValue} already have a placement.`;
+      }
+    }
+
     list.innerHTML = (visible.map(dev => {
       const matched = cameraTypeByDeviceTypeId(dev.device_type_id);
-      const icon = matched ? cameraIconHtml(matched.id) + ' ' : '';
+      // Explicit sizing here, not relying on cameraIconHtml's bare
+      // <img>/<span> output as-is: preset icon SVGs don't all share the
+      // same native dimensions (fish-eye's asset in particular renders
+      // dramatically larger and in a different color scheme than the
+      // others when left unconstrained) — this list needs every icon
+      // visually consistent regardless of which preset it came from.
+      // The .cfp-list-icon class actually scales the image via
+      // object-fit (mirroring how .cfp-dot img already does this for
+      // canvas markers) — a plain overflow:hidden wrapper would only
+      // crop an oversized image, not shrink it to fit.
+      const icon = matched
+        ? `<span class="cfp-list-icon">${cameraIconHtml(matched.id)}</span>`
+        : '';
       return `
       <div class="d-flex align-items-center justify-content-between mb-1 small">
         <span>${icon}${dev.name}${dev.location ? ' <span class="text-muted">(' + dev.location + ')</span>' : ''}</span>
@@ -672,7 +705,7 @@
         </button>
       </div>
     `;
-    }).join('') || '<div class="text-muted small p-1">No matching devices.</div>')
+    }).join('') || `<div class="text-muted small p-1">${emptyMessage}</div>`)
     + (remaining > 0 ? `<button type="button" class="btn btn-xs btn-outline-secondary w-100 mt-1" id="cfp-available-show-more">Show ${Math.min(remaining, 20)} more (${remaining} left)</button>` : '');
 
     list.querySelectorAll('.cfp-place-available-btn').forEach(btn => {
@@ -702,14 +735,29 @@
     const siteValue = siteFilterEl.value;
     const previousSelection = locationFilterEl.value;
     const pool = siteValue ? availableDevices.filter(d => d.site === siteValue) : availableDevices;
-    const locations = [...new Set(pool.map(d => d.location).filter(Boolean))].sort();
+    const locations = new Set(pool.map(d => d.location).filter(Boolean));
+    // Same reasoning as always including the floor plan's own Site in
+    // the site dropdown: always offer THIS floor plan's own Location
+    // too, even with zero currently-available devices there — otherwise
+    // it silently vanishes the moment every device at that location
+    // happens to already be placed, which looks like a bug rather than
+    // the "nothing left to place here" it actually is. Only added when
+    // the matching site is actually selected (or "All sites"), not
+    // forced onto an unrelated site's filtered view.
+    if(floorplanLocationName && (!siteValue || siteValue === floorplanSiteName)){
+      locations.add(floorplanLocationName);
+    }
+    const sortedLocations = [...locations].sort();
     locationFilterEl.innerHTML = '<option value="">All locations</option>' +
-      locations.map(loc => `<option value="${loc}">${loc}</option>`).join('');
+      sortedLocations.map(loc => `<option value="${loc}">${loc}</option>`).join('');
     // Keep the previous location selection if it's still valid for the
-    // newly selected site; otherwise fall back to "All locations"
-    // rather than silently keeping an invalid, now-hidden selection.
-    if(locations.includes(previousSelection)){
+    // newly selected site; otherwise default to this floor plan's own
+    // Location (if offered above) rather than silently keeping an
+    // invalid, now-hidden selection or falling back to "All locations".
+    if(sortedLocations.includes(previousSelection)){
       locationFilterEl.value = previousSelection;
+    } else if(floorplanLocationName && sortedLocations.includes(floorplanLocationName)){
+      locationFilterEl.value = floorplanLocationName;
     }
   }
 
@@ -1072,6 +1120,8 @@
   if(confirmAddBtn){
     confirmAddBtn.addEventListener('click', () => {
       if(!selectedNewDeviceId || !pendingClick) return;
+      const modalError = document.getElementById('cfp-add-modal-error');
+      modalError.style.display = 'none';
       const typeVal = getTypePickerValue(document.getElementById('cfp-new-type-picker'));
       const cameraTypeId = typeVal ? parseInt(typeVal, 10) : null;
       fetch(`/plugins/camera-floorplan/floorplans/${floorplanId}/save-camera/`, {
@@ -1083,10 +1133,24 @@
           direction_degrees: 0,
         }),
       }).then(r => r.json()).then(data => {
-        if(data.error){ showError(data.error); return; }
+        if(data.error){
+          // Shown INSIDE the modal, not the page-level error banner —
+          // that banner sits behind the modal's own backdrop (a stacking
+          // order neither element was aware of the other for), so it was
+          // rendering successfully but invisibly the whole time. This
+          // was very hard to notice from the user's side: the request
+          // demonstrably failed (visible in the Network tab / server
+          // logs as a 400), yet nothing appeared to happen at all.
+          modalError.textContent = data.error;
+          modalError.style.display = 'block';
+          return;
+        }
         getBsModal(document.getElementById('cfp-add-modal')).hide();
         location.reload(); // simplest way to refetch the device name/links server-side
-      }).catch(() => showError('Could not place this device. Please try again.'));
+      }).catch(() => {
+        modalError.textContent = 'Could not place this device. Please try again.';
+        modalError.style.display = 'block';
+      });
     });
   }
 
@@ -1147,6 +1211,7 @@
         confirmAddBtn.disabled = false;
         const matched = dev ? cameraTypeByDeviceTypeId(dev.device_type_id) : undefined;
         populateTypePicker(document.getElementById('cfp-new-type-picker'), matched ? matched.id : null);
+        document.getElementById('cfp-add-modal-error').style.display = 'none';
         getBsModal(document.getElementById('cfp-add-modal')).show();
         placingAvailableId = null;
         renderAvailable();
@@ -1160,6 +1225,7 @@
       selectedLabel.textContent = '';
       confirmAddBtn.disabled = true;
       populateTypePicker(document.getElementById('cfp-new-type-picker'), null);
+      document.getElementById('cfp-add-modal-error').style.display = 'none';
       getBsModal(document.getElementById('cfp-add-modal')).show();
     });
   }
