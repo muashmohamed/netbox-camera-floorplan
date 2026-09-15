@@ -1,0 +1,42 @@
+{% extends 'generic/object_edit.html' %}
+
+{% block content %}
+<div class="card mb-3">
+  <div class="card-header">Device info (read-only)</div>
+  <div class="card-body">
+    <dl class="row mb-0">
+      <dt class="col-sm-3">Device</dt>
+      <dd class="col-sm-9">
+        <a href="{{ object.device.get_absolute_url }}">{{ object.device.name }}</a>
+      </dd>
+
+      <dt class="col-sm-3">NetBox Device Type</dt>
+      <dd class="col-sm-9">
+        {% if object.device.device_type %}
+          <a href="{{ object.device.device_type.get_absolute_url }}">{{ object.device.device_type }}</a>
+        {% else %}
+          &mdash;
+        {% endif %}
+      </dd>
+
+      <dt class="col-sm-3">IP Address</dt>
+      <dd class="col-sm-9">{{ object.device.primary_ip|default:"—" }}</dd>
+
+      <dt class="col-sm-3">Site / Location</dt>
+      <dd class="col-sm-9">
+        {{ object.device.site }}{% if object.device.location %} / {{ object.device.location }}{% endif %}
+      </dd>
+
+      <dt class="col-sm-3">Floor plan</dt>
+      <dd class="col-sm-9">
+        {% if object.floorplan %}
+          <a href="{{ object.floorplan.get_absolute_url }}">{{ object.floorplan }}</a>
+        {% else %}
+          <span class="text-muted">No floor plan yet</span>
+        {% endif %}
+      </dd>
+    </dl>
+  </div>
+</div>
+{{ block.super }}
+{% endblock %}

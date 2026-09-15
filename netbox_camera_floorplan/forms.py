@@ -184,6 +184,30 @@ class FloorPlanFilterForm(NetBoxModelFilterSetForm):
     )
 
 
+class CameraPlacementDeviceTypeForm(NetBoxModelForm):
+    """
+    Deliberately minimal — exposes ONLY Device Type, unlike the full
+    canvas editing flow which also covers position, direction, hub/slot,
+    notes, etc. Those stay canvas-only on purpose (position in
+    particular can't be set meaningfully from a blind form, it needs
+    the visual floor plan). Device Type has no such requirement — it's
+    just a dropdown — so this one field gets a fast path here, for
+    clearing a "Needs Device Type" Setup warning without having to find
+    and open the actual floor plan first.
+    """
+
+    camera_type = DynamicModelChoiceField(
+        queryset=CameraType.objects.all(),
+        required=False,
+        label="Device type",
+        help_text="Manage available Device Types under Plugins → Device Types.",
+    )
+
+    class Meta:
+        model = CameraPlacement
+        fields = ["camera_type"]
+
+
 class CameraPlacementForm(NetBoxModelForm):
     device = DynamicModelChoiceField(
         queryset=Device.objects.all(),

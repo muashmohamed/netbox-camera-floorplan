@@ -195,6 +195,22 @@ class CameraPlacementListView(generic.ObjectListView):
     filterset_form = forms.CameraPlacementFilterForm
 
 
+class CameraPlacementEditView(generic.ObjectEditView):
+    """
+    Deliberately scoped to CameraPlacementDeviceTypeForm (Device Type
+    only) — not the full placement editor. Position, direction, hub/
+    slot, and notes remain canvas-only; see that form's docstring for
+    why Device Type specifically doesn't share that restriction. Reached
+    via the standard '<model>_edit' URL name so NetBox's ActionsColumn
+    picks it up automatically once "edit" is added to that column's
+    actions, the same as every other object's Edit button.
+    """
+
+    queryset = CameraPlacement.objects.all()
+    form = forms.CameraPlacementDeviceTypeForm
+    template_name = "netbox_camera_floorplan/cameraplacement_edit.html"
+
+
 class CameraPlacementDeleteView(generic.ObjectDeleteView):
     queryset = CameraPlacement.objects.all()
 

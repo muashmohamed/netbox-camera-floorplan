@@ -176,11 +176,13 @@ class CameraPlacementTable(NetBoxTable):
     setup_status = tables.Column(
         empty_values=(), orderable=False, verbose_name="Setup", accessor="pk",
     )
-    # No "edit" action here on purpose — a placement's position (x/y) can
-    # only be set meaningfully by clicking on the floor plan canvas, not
-    # from a blind form. This list is for viewing/deleting only; to move
-    # a camera, open its floor plan and drag/re-click it there.
-    actions = ActionsColumn(actions=("delete",))
+    # "edit" here is deliberately scoped to Device Type ONLY (see
+    # CameraPlacementDeviceTypeForm) — position (x/y), direction, and
+    # hub/slot still can't be set meaningfully from a blind list-page
+    # form, those stay canvas-only. Device Type has no such visual
+    # requirement, so it gets a fast path for clearing a "Needs Device
+    # Type" Setup warning without hunting down the actual floor plan.
+    actions = ActionsColumn(actions=("edit", "delete"))
 
     class Meta(NetBoxTable.Meta):
         model = CameraPlacement
