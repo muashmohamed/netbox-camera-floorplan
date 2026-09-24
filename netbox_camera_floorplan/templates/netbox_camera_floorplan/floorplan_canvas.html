@@ -299,6 +299,7 @@
     el.style.setProperty('--cfp-cone-half-width', preset.coneHalf);
   }
   let pendingClick = null;
+  let pendingUnplacedFix = null; // holds {id, device_id, device_name, x_pct, y_pct} when an Unplaced device's camera_type came back empty (ambiguous or never mapped) and needs a forced manual choice before the placement is finalized, instead of silently saving with no type
   let selectedNewDeviceId = null;
 
   const stage = document.getElementById('cfp-stage');
@@ -1119,19 +1120,30 @@
 
   if(confirmAddBtn){
     confirmAddBtn.addEventListener('click', () => {
-      if(!selectedNewDeviceId || !pendingClick) return;
+      // Two distinct situations share this same modal+button:
+      // 1) pendingClick — a brand new placement, created fresh (no id yet).
+      // 2) pendingUnplacedFix — an existing Unplaced placement whose
+      //    camera_type came back empty; this finishes it in place
+      //    (same id) rather than creating a second, duplicate placement
+      //    for the same device — the unique-per-device constraint would
+      //    reject that outright even if it were attempted.
+      const fixingExisting = pendingUnplacedFix != null;
+      if(!selectedNewDeviceId || (!pendingClick && !fixingExisting)) return;
       const modalError = document.getElementById('cfp-add-modal-error');
       modalError.style.display = 'none';
       const typeVal = getTypePickerValue(document.getElementById('cfp-new-type-picker'));
       const cameraTypeId = typeVal ? parseInt(typeVal, 10) : null;
+      const coords = fixingExisting ? pendingUnplacedFix : pendingClick;
+      const payload = {
+        device_id: selectedNewDeviceId, camera_type_id: cameraTypeId,
+        x_pct: coords.x_pct, y_pct: coords.y_pct,
+        direction_degrees: 0,
+      };
+      if(fixingExisting) payload.id = pendingUnplacedFix.id;
       fetch(`/plugins/camera-floorplan/floorplans/${floorplanId}/save-camera/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
-        body: JSON.stringify({
-          device_id: selectedNewDeviceId, camera_type_id: cameraTypeId,
-          x_pct: pendingClick.x_pct, y_pct: pendingClick.y_pct,
-          direction_degrees: 0,
-        }),
+        body: JSON.stringify(payload),
       }).then(r => r.json()).then(data => {
         if(data.error){
           // Shown INSIDE the modal, not the page-level error banner —
@@ -1145,6 +1157,7 @@
           modalError.style.display = 'block';
           return;
         }
+        pendingUnplacedFix = null;
         getBsModal(document.getElementById('cfp-add-modal')).hide();
         location.reload(); // simplest way to refetch the device name/links server-side
       }).catch(() => {
@@ -1179,6 +1192,25 @@
         const idx = unplaced.findIndex(c => c.id === placingId);
         if(idx === -1){ placingId = null; return; }
         const cam = unplaced[idx];
+        if(!cam.camera_type_id){
+          // Device Type came back empty — either genuinely ambiguous
+          // (e.g. an NVR that could be 8/16/32/128-channel, all sharing
+          // one real hardware entry) or simply never mapped. Either
+          // way, force a choice now via the same modal used for brand
+          // new placements, rather than silently saving with no type
+          // and leaving it to be noticed later in the detail panel.
+          placingId = null;
+          pendingUnplacedFix = { id: cam.id, device_id: cam.device_id, device_name: cam.device_name, x_pct: xPct, y_pct: yPct };
+          selectedNewDeviceId = cam.device_id;
+          document.getElementById('cfp-device-search').value = cam.device_name;
+          document.getElementById('cfp-device-selected').textContent = `Selected: ${cam.device_name}`;
+          confirmAddBtn.disabled = false;
+          const matched = cameraTypeByDeviceTypeId(cam.device_type_id);
+          populateTypePicker(document.getElementById('cfp-new-type-picker'), matched ? matched.id : null);
+          document.getElementById('cfp-add-modal-error').style.display = 'none';
+          getBsModal(document.getElementById('cfp-add-modal')).show();
+          return;
+        }
         fetch(`/plugins/camera-floorplan/floorplans/${floorplanId}/save-camera/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },

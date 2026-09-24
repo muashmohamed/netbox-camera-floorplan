@@ -204,6 +204,7 @@ class CameraType(NetBoxModel):
     PRESET_FISHEYE = "fisheye"
     PRESET_AP = "ap"
     PRESET_ACCESS_CONTROL = "access_control"
+    PRESET_DOOR_READER = "door_reader"
     PRESET_SWITCH = "switch"
     PRESET_UPS = "ups"
     PRESET_SERVER = "server"
@@ -220,7 +221,8 @@ class CameraType(NetBoxModel):
         (PRESET_BULLET, "Bullet camera (built-in)"),
         (PRESET_FISHEYE, "Fisheye camera (built-in)"),
         (PRESET_AP, "Access Point (built-in)"),
-        (PRESET_ACCESS_CONTROL, "Access Control (built-in)"),
+        (PRESET_ACCESS_CONTROL, "Access Control panel (built-in)"),
+        (PRESET_DOOR_READER, "Door reader (built-in)"),
         (PRESET_SWITCH, "Switch (built-in)"),
         (PRESET_UPS, "UPS (built-in)"),
         (PRESET_SERVER, "Server (built-in)"),
@@ -242,6 +244,7 @@ class CameraType(NetBoxModel):
         PRESET_FISHEYE: "camera",
         PRESET_AP: "ap",
         PRESET_ACCESS_CONTROL: "access_control",
+        PRESET_DOOR_READER: "door-reader",
         PRESET_SWITCH: "switch",
         PRESET_UPS: "ups",
         PRESET_SERVER: "server",
