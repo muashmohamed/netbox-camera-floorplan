@@ -840,12 +840,16 @@
             for(let slot = 1; slot <= hubEntry.capacity; slot++){
               const occupant = (hubEntry.used_slots || {})[String(slot)];
               const label = format.replace('{n}', slot);
-              rows.push(`<div class="d-flex justify-content-between small">
+              const slotActions = (canEdit && !RESTRICTED) ? (occupant
+                ? `<button type="button" class="btn btn-link btn-sm p-0 ms-2" data-cfp-slot-assign="${slot}" data-cfp-hub="${hubEntry.id}">Change</button>` +
+                  `<button type="button" class="btn btn-link btn-sm p-0 ms-2 text-danger" data-cfp-slot-clear="${slot}" data-cfp-hub="${hubEntry.id}">Remove</button>`
+                : `<button type="button" class="btn btn-link btn-sm p-0 ms-2" data-cfp-slot-assign="${slot}" data-cfp-hub="${hubEntry.id}">Assign</button>`) : '';
+              rows.push(`<div class="d-flex justify-content-between align-items-center small">
                 <span>${label}</span>
-                <span class="${occupant ? '' : 'text-muted'}">${occupant || 'Empty'}</span>
+                <span><span class="${occupant ? '' : 'text-muted'}">${occupant || 'Empty'}</span>${slotActions}</span>
               </div>`);
             }
-            return `<details class="mt-1"><summary class="small" style="cursor:pointer;">Show per-slot breakdown</summary>${rows.join('')}</details>`;
+            return `<details class="mt-1" id="cfp-slot-details"${cfpSlotDetailsOpen ? ' open' : ''}><summary class="small" style="cursor:pointer;">${(canEdit && !RESTRICTED) ? 'Channels: assign from any location' : 'Show per-slot breakdown'}</summary>${rows.join('')}</details>`;
           })()}
         </div>
       ` : ''}
@@ -1005,6 +1009,215 @@
       }
     }
   }
+
+  // ---------------------------------------------------------------------
+  // Hub-side channel assignment: click an NVR / Access Control panel, then
+  // a channel or door, and pick a device from ANY site or location. Only the
+  // hub link changes; where a device is drawn stays governed by the normal
+  // floor plan rules.
+  // ---------------------------------------------------------------------
+  var cfpSlotDetailsOpen = false;  // var: renderDetail may read it before this line runs
+  let cfpSlotCtx = null;      // {hub, slot, label, occupant}
+  let cfpSlotResults = [];
+  const cfpEsc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+    {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+  const cfpSlotLabel = (hub, n) => ((hub && hub.slot_label_format) || '{n}').replace('{n}', n);
+
+  function cfpSlotModal(){
+    let el = document.getElementById('cfp-slot-modal');
+    if(el) return el;
+    el = document.createElement('div');
+    el.className = 'modal fade';
+    el.id = 'cfp-slot-modal';
+    el.tabIndex = -1;
+    el.setAttribute('aria-hidden', 'true');
+    el.innerHTML = `
+      <div class="modal-dialog modal-lg"><div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="cfp-slot-title"></h5>
+          <button type="button" class="btn-close" data-cfp-slot-close aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-2 mb-2">
+            <div class="col-md-5"><input id="cfp-slot-q" class="form-control" placeholder="Search device name" autocomplete="off"></div>
+            <div class="col-md-4"><select id="cfp-slot-site" class="form-select">
+              <option value="">All sites</option>
+              ${sites.map(s => `<option value="${s.id}">${cfpEsc(s.name)}</option>`).join('')}
+            </select></div>
+            <div class="col-md-3"><select id="cfp-slot-kind" class="form-select">
+              <option value="camera">Cameras</option>
+              <option value="other">Other devices</option>
+              <option value="all">All devices</option>
+            </select></div>
+          </div>
+          <div class="small text-muted mb-2">Devices from any site or location can be connected. A device must already be
+            on a floor plan (placed, or in its Unplaced devices list) to appear here.</div>
+          <div id="cfp-slot-error" class="alert alert-danger" style="display:none;"></div>
+          <div id="cfp-slot-results" class="list-group" style="max-height:55vh; overflow-y:auto;"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-cfp-slot-close>Cancel</button>
+        </div>
+      </div></div>`;
+    document.body.appendChild(el);
+    el.querySelectorAll('[data-cfp-slot-close]').forEach(b => b.addEventListener('click', () => getBsModal(el).hide()));
+    let timer = null;
+    el.querySelector('#cfp-slot-q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(cfpLoadSlotCandidates, 250); });
+    el.querySelector('#cfp-slot-site').addEventListener('change', cfpLoadSlotCandidates);
+    el.querySelector('#cfp-slot-kind').addEventListener('change', cfpLoadSlotCandidates);
+    el.querySelector('#cfp-slot-results').addEventListener('click', cfpOnSlotCandidateClick);
+    return el;
+  }
+
+  function cfpSlotError(msg){
+    const box = document.getElementById('cfp-slot-error');
+    if(!box) return;
+    box.textContent = msg || '';
+    box.style.display = msg ? 'block' : 'none';
+  }
+
+  function cfpOpenSlotAssign(hubId, slot){
+    const hub = hubs.find(h => h.id === hubId);
+    if(!hub) return;
+    const label = cfpSlotLabel(hub, slot);
+    cfpSlotCtx = { hub, slot, label, occupant: (hub.used_slots || {})[String(slot)] || null };
+    const el = cfpSlotModal();
+    el.querySelector('#cfp-slot-title').textContent =
+      `${hub.device_name}: ${label}` + (cfpSlotCtx.occupant ? ` (now ${cfpSlotCtx.occupant})` : '');
+    el.querySelector('#cfp-slot-q').value = '';
+    el.querySelector('#cfp-slot-kind').value = /door|access|reader/i.test(hub.category_name || '') ? 'other' : 'camera';
+    cfpSlotError('');
+    getBsModal(el).show();
+    cfpLoadSlotCandidates();
+    setTimeout(() => el.querySelector('#cfp-slot-q').focus(), 50);
+  }
+
+  function cfpLoadSlotCandidates(){
+    if(!cfpSlotCtx) return;
+    const el = cfpSlotModal();
+    const params = new URLSearchParams({
+      q: el.querySelector('#cfp-slot-q').value.trim(),
+      site_id: el.querySelector('#cfp-slot-site').value,
+      kind: el.querySelector('#cfp-slot-kind').value,
+    });
+    const list = el.querySelector('#cfp-slot-results');
+    list.innerHTML = '<div class="text-muted small p-2">Loading…</div>';
+    fetch(`/plugins/camera-floorplan/hubs/${cfpSlotCtx.hub.id}/candidates/?${params}`)
+      .then(r => r.json())
+      .then(data => {
+        if(data.error){ cfpSlotError(data.error); list.innerHTML = ''; return; }
+        cfpSlotResults = data.results || [];
+        if(!cfpSlotResults.length){
+          list.innerHTML = '<div class="text-muted small p-2">No matching devices. Try All sites or All devices.</div>';
+          return;
+        }
+        list.innerHTML = cfpSlotResults.map(r => {
+          const where = [r.site, r.location].filter(Boolean).join(' / ');
+          const isHere = r.connected && r.connected.hub_id === cfpSlotCtx.hub.id && r.connected.slot === cfpSlotCtx.slot;
+          const badge = isHere ? '<span class="badge text-bg-secondary">This slot</span>'
+            : r.connected ? `<span class="badge text-bg-warning">On ${cfpEsc(r.connected.hub_name)} ${cfpEsc(r.connected.slot_label || '')}</span>`
+            : '<span class="badge text-bg-success">Free</span>';
+          return `<button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" data-cfp-candidate="${r.id}">
+            <span><strong>${cfpEsc(r.device_name)}</strong>
+              <span class="d-block small text-muted">${cfpEsc(where)}${r.category ? ', ' + cfpEsc(r.category) : ''}${r.placed ? '' : ', not yet placed'}</span></span>
+            ${badge}</button>`;
+        }).join('');
+      })
+      .catch(() => { cfpSlotError('Could not load devices. Please try again.'); list.innerHTML = ''; });
+  }
+
+  function cfpOnSlotCandidateClick(e){
+    const btn = e.target.closest('[data-cfp-candidate]');
+    if(!btn || !cfpSlotCtx) return;
+    const r = cfpSlotResults.find(x => x.id === parseInt(btn.dataset.cfpCandidate, 10));
+    if(!r) return;
+    const { label, occupant } = cfpSlotCtx;
+    if(r.connected && !(r.connected.hub_id === cfpSlotCtx.hub.id && r.connected.slot === cfpSlotCtx.slot)){
+      if(!confirm(`${r.device_name} is on ${r.connected.hub_name} ${r.connected.slot_label || ''}. Move it to ${label}?`)) return;
+    }
+    let replace = false;
+    if(occupant && occupant !== r.device_name){
+      if(!confirm(`${label} is used by ${occupant}. Replace it with ${r.device_name}?`)) return;
+      replace = true;
+    }
+    cfpSendSlot(r.id, replace);
+  }
+
+  function cfpSendSlot(placementId, replace){
+    const { hub, slot } = cfpSlotCtx;
+    fetch(`/plugins/camera-floorplan/hubs/${hub.id}/assign-slot/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+      body: JSON.stringify({ slot, placement_id: placementId, replace: !!replace }),
+    }).then(r => r.json()).then(data => {
+      if(data.error){
+        if(document.getElementById('cfp-slot-modal') && document.getElementById('cfp-slot-modal').style.display === 'block'){
+          cfpSlotError(data.error);
+        } else {
+          showError(data.error);
+        }
+        return;
+      }
+      cfpApplySlotChange(hub, slot, data);
+      const el = document.getElementById('cfp-slot-modal');
+      if(el) getBsModal(el).hide();
+    }).catch(() => showError('Could not save the channel. Please try again.'));
+  }
+
+  function cfpApplySlotChange(hub, slot, data){
+    // Keep the page's own data in step, so the panel updates without a reload.
+    const used = hub.used_slots = hub.used_slots || {};
+    if(data.previous){
+      const prevHub = hubs.find(h => h.id === data.previous.hub_id);
+      if(prevHub && prevHub.used_slots) delete prevHub.used_slots[String(data.previous.slot)];
+    }
+    if(data.placement_id){ used[String(slot)] = data.device_name; } else { delete used[String(slot)]; }
+    const touch = (list) => list.forEach(c => {
+      if(data.replaced_placement_id && c.id === data.replaced_placement_id){
+        c.connected_hub_id = null; c.hub_slot = null; c.hub_slot_label = null;
+      }
+      if(data.placement_id && c.id === data.placement_id){
+        c.connected_hub_id = hub.id; c.hub_slot = slot; c.hub_slot_label = data.slot_label || cfpSlotLabel(hub, slot);
+      }
+    });
+    touch(cameras); touch(unplaced);
+    hubs.forEach(h => {
+      const count = Object.keys(h.used_slots || {}).length;
+      [cameras, unplaced].forEach(list => list.forEach(c => {
+        if(c.id === h.id && c.hub_slot_usage){
+          c.hub_slot_usage.used = count;
+          c.hub_slot_usage.available = Math.max((c.hub_slot_usage.capacity || 0) - count, 0);
+        }
+      }));
+    });
+    cfpSlotDetailsOpen = true;
+    renderDetail();
+    renderMarkers();
+  }
+
+  detail.addEventListener('click', (e) => {
+    const assign = e.target.closest('[data-cfp-slot-assign]');
+    if(assign){
+      e.preventDefault();
+      cfpOpenSlotAssign(parseInt(assign.dataset.cfpHub, 10), parseInt(assign.dataset.cfpSlotAssign, 10));
+      return;
+    }
+    const clear = e.target.closest('[data-cfp-slot-clear]');
+    if(clear){
+      e.preventDefault();
+      const hub = hubs.find(h => h.id === parseInt(clear.dataset.cfpHub, 10));
+      const slot = parseInt(clear.dataset.cfpSlotClear, 10);
+      if(!hub) return;
+      const label = cfpSlotLabel(hub, slot);
+      const who = (hub.used_slots || {})[String(slot)] || 'this device';
+      if(!confirm(`Remove ${who} from ${label}? The device itself isn't changed.`)) return;
+      cfpSlotCtx = { hub, slot, label, occupant: who };
+      cfpSendSlot(null, false);
+    }
+  });
+  detail.addEventListener('toggle', (e) => {
+    if(e.target && e.target.id === 'cfp-slot-details') cfpSlotDetailsOpen = e.target.open;
+  }, true);
 
   function savePlacement(cam, pending){
     const oldConnectedHubId = cam.connected_hub_id;

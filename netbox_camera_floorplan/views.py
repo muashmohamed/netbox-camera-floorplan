@@ -462,6 +462,10 @@ def _build_canvas_context(request, floorplan, camera_only=False, force_read_only
                 ),
                 "usage": hub.get_hub_slot_usage(),
                 "used_slots": hub.get_hub_slot_assignments(),
+                "category_name": (
+                    hub.camera_type.category.name
+                    if hub.camera_type and hub.camera_type.category else ""
+                ),
             }
             for hub in hub_placements
         ]
@@ -779,4 +783,172 @@ class DeviceSearchView(PermissionRequiredMixin, View):
                 }
                 for d in devices
             ]
+        })
+
+
+# ---------------------------------------------------------------------------
+# Hub-side slot assignment: click an NVR / Access Control panel, then a
+# channel or door, and pick the device from ANY site or location.
+#
+# This only sets CameraPlacement.connected_hub / hub_slot. It never moves a
+# device or changes which floor plan it's drawn on, so the floor plan rule
+# (a device is only placed on its own site/location's floor plan) is untouched.
+# Only devices that already have a placement (placed or in "Unplaced devices"
+# on some floor plan) can be connected, because connected_hub points at a
+# placement.
+# ---------------------------------------------------------------------------
+from django.db import transaction as _cfp_transaction  # noqa: E402
+
+
+def _cfp_hub_or_error(pk):
+    hub = get_object_or_404(
+        CameraPlacement.objects.select_related("device", "camera_type__category"), pk=pk
+    )
+    if not (hub.camera_type and hub.camera_type.is_hub):
+        return hub, JsonResponse({"error": "This device isn't a hub (NVR, Access Control, ...)."}, status=400)
+    return hub, None
+
+
+class HubSlotCandidatesView(PermissionRequiredMixin, View):
+    """Read-only list of devices that can be put on one of this hub's slots."""
+
+    permission_required = "netbox_camera_floorplan.add_cameraplacement"
+
+    def get(self, request, pk):
+        hub, err = _cfp_hub_or_error(pk)
+        if err:
+            return err
+        qs = (
+            CameraPlacement.objects.exclude(pk=hub.pk)
+            .exclude(camera_type__category__is_hub=True)
+            .select_related(
+                "device", "device__site", "device__location", "floorplan",
+                "camera_type__category", "connected_hub__device",
+                "connected_hub__camera_type__category",
+            )
+        )
+        query = request.GET.get("q", "").strip()
+        if query:
+            qs = qs.filter(device__name__icontains=query)
+        site_id = request.GET.get("site_id")
+        if site_id:
+            qs = qs.filter(device__site_id=site_id)
+        kind = request.GET.get("kind", "all")
+        if kind == "camera":
+            qs = qs.filter(camera_type__category__is_camera=True)
+        elif kind == "other":
+            qs = qs.exclude(camera_type__category__is_camera=True)
+
+        # Same location as the hub first, then same site, then everything else.
+        order = []
+        if hub.device.location_id:
+            order.append(models.Case(models.When(device__location_id=hub.device.location_id, then=0), default=1))
+        order.append(models.Case(models.When(device__site_id=hub.device.site_id, then=0), default=1))
+        qs = qs.order_by(*order, "device__name")[:60]
+
+        results = []
+        for p in qs:
+            connected = None
+            if p.connected_hub_id:
+                connected = {
+                    "hub_id": p.connected_hub_id,
+                    "hub_name": p.connected_hub.device.name if p.connected_hub else "",
+                    "slot": p.hub_slot,
+                    "slot_label": p.get_hub_slot_label(),
+                }
+            results.append({
+                "id": p.pk,
+                "device_name": p.device.name,
+                "site": str(p.device.site) if p.device.site else "",
+                "location": str(p.device.location) if p.device.location else "",
+                "floorplan": p.floorplan.name if p.floorplan else "",
+                "category": p.camera_type.category.name if p.camera_type and p.camera_type.category else "",
+                "placed": p.is_placed,
+                "connected": connected,
+            })
+        return JsonResponse({"results": results})
+
+
+@method_decorator(csrf_protect, name="dispatch")
+class HubSlotAssignView(PermissionRequiredMixin, View):
+    """
+    POST {"slot": 37, "placement_id": 123, "replace": false}  put a device on a slot
+    POST {"slot": 37, "placement_id": null}                   empty the slot
+    """
+
+    permission_required = "netbox_camera_floorplan.add_cameraplacement"
+
+    def post(self, request, pk):
+        hub, err = _cfp_hub_or_error(pk)
+        if err:
+            return err
+        try:
+            payload = json.loads(request.body)
+            slot = int(payload.get("slot"))
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return JsonResponse({"error": "A slot number is required."}, status=400)
+
+        capacity = hub.camera_type.channel_capacity
+        category = hub.camera_type.category
+        label = category.format_slot_label(slot) if category else str(slot)
+        if slot < 1 or (capacity and slot > capacity):
+            return JsonResponse({"error": f"{label} is outside this hub's capacity ({capacity})."}, status=400)
+
+        placement_id = payload.get("placement_id")
+        occupant = CameraPlacement.objects.filter(connected_hub=hub, hub_slot=slot).select_related("device").first()
+
+        def clear(p):
+            p.snapshot()
+            p.connected_hub = None
+            p.hub_slot = None
+            p.full_clean()
+            p.save()
+
+        try:
+            with _cfp_transaction.atomic():
+                if not placement_id:
+                    if occupant:
+                        clear(occupant)
+                    return JsonResponse({
+                        "status": "ok", "slot": slot, "placement_id": None,
+                        "replaced_placement_id": occupant.pk if occupant else None,
+                    })
+
+                placement = get_object_or_404(CameraPlacement.objects.select_related("device"), pk=placement_id)
+                if placement.pk == hub.pk:
+                    return JsonResponse({"error": "A hub can't be connected to itself."}, status=400)
+                if placement.camera_type and placement.camera_type.is_hub:
+                    return JsonResponse({"error": f"{placement.device.name} is itself a hub."}, status=400)
+
+                replaced_id = None
+                if occupant and occupant.pk != placement.pk:
+                    if not payload.get("replace"):
+                        return JsonResponse({
+                            "error": f"{label} is already used by {occupant.device.name}.",
+                            "occupied_by": occupant.device.name,
+                        }, status=409)
+                    clear(occupant)
+                    replaced_id = occupant.pk
+
+                previous = None
+                if placement.connected_hub_id and (placement.connected_hub_id, placement.hub_slot) != (hub.pk, slot):
+                    previous = {"hub_id": placement.connected_hub_id, "slot": placement.hub_slot}
+
+                placement.snapshot()
+                placement.connected_hub = hub
+                placement.hub_slot = slot
+                placement.full_clean()
+                placement.save()
+        except (ValidationError, IntegrityError) as e:
+            detail = "; ".join(e.messages) if isinstance(e, ValidationError) else str(e)
+            return JsonResponse({"error": f"Could not assign {label}: {detail}"}, status=400)
+
+        return JsonResponse({
+            "status": "ok",
+            "slot": slot,
+            "slot_label": label,
+            "placement_id": placement.pk,
+            "device_name": placement.device.name,
+            "previous": previous,
+            "replaced_placement_id": replaced_id,
         })

@@ -49,3 +49,13 @@ urlpatterns = [
     path("cameras/<int:pk>/changelog/", views.CameraPlacementChangeLogView.as_view(), name="cameraplacement_changelog"),
     path("cameras/<int:pk>/unplace/", views.CameraPlacementUnplaceView.as_view(), name="camera_unplace"),
 ]
+
+
+# Hub-side slot assignment (NVR channels / Access Control doors from any location)
+from django.urls import path as _cfp_path  # noqa: E402
+from . import views as _cfp_views  # noqa: E402
+
+urlpatterns = list(urlpatterns) + [
+    _cfp_path("hubs/<int:pk>/candidates/", _cfp_views.HubSlotCandidatesView.as_view(), name="hub_slot_candidates"),
+    _cfp_path("hubs/<int:pk>/assign-slot/", _cfp_views.HubSlotAssignView.as_view(), name="hub_slot_assign"),
+]
