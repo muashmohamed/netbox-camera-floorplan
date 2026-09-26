@@ -315,6 +315,35 @@
     showError._t = window.setTimeout(() => { errorBanner.style.display = 'none'; }, 6000);
   }
 
+  // Small green confirmation: a toast in the corner, and the Save button
+  // briefly turns into "Saved".
+  function cfpFlashSaved(message){
+    let t = document.getElementById('cfp-toast');
+    if(!t){
+      t = document.createElement('div');
+      t.id = 'cfp-toast';
+      t.className = 'alert alert-success shadow d-print-none';
+      t.setAttribute('role', 'status');
+      t.style.cssText = 'position:fixed; right:1.25rem; bottom:1.25rem; z-index:2000; margin:0; display:none; min-width:220px;';
+      document.body.appendChild(t);
+    }
+    t.textContent = '\u2713 ' + message;
+    t.style.display = 'block';
+    clearTimeout(cfpFlashSaved._t);
+    cfpFlashSaved._t = setTimeout(() => { t.style.display = 'none'; }, 2500);
+    const btn = document.getElementById('cfp-save-btn');
+    if(btn){
+      btn.innerHTML = '\u2713 Saved';
+      btn.classList.replace('btn-primary', 'btn-success');
+      setTimeout(() => {
+        if(document.body.contains(btn)){
+          btn.innerHTML = 'Save';
+          btn.classList.replace('btn-success', 'btn-primary');
+        }
+      }, 1800);
+    }
+  }
+
   const CSRF_TOKEN = "{{ csrf_token }}";
 
   function getBsModal(el){
@@ -1193,6 +1222,8 @@
     cfpSlotDetailsOpen = true;
     renderDetail();
     renderMarkers();
+    const slotLabel = data.slot_label || cfpSlotLabel(hub, slot);
+    cfpFlashSaved(data.placement_id ? `${data.device_name} on ${slotLabel}` : `${slotLabel} cleared`);
   }
 
   detail.addEventListener('click', (e) => {
@@ -1220,6 +1251,8 @@
   }, true);
 
   function savePlacement(cam, pending){
+    const savingBtn = document.getElementById('cfp-save-btn');
+    if(savingBtn){ savingBtn.disabled = true; savingBtn.textContent = 'Saving…'; }
     const oldConnectedHubId = cam.connected_hub_id;
     const oldHubSlot = cam.hub_slot;
     fetch(`/plugins/camera-floorplan/floorplans/${floorplanId}/save-camera/`, {
@@ -1250,6 +1283,7 @@
       updateHubSlotTracking(oldConnectedHubId, oldHubSlot, cam.connected_hub_id, cam.hub_slot, cam.device_name);
       renderMarkers();
       renderDetail();
+      cfpFlashSaved(`${cam.device_name} saved`);
     }).catch(() => {
       showError('Could not save this device. Please try again.');
       renderDetail();
